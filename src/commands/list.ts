@@ -1,5 +1,6 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
+import ora from 'ora';
 import { DatabaseConfig } from '../config/database';
 
 export default class List extends Command {
@@ -32,7 +33,9 @@ export default class List extends Command {
     try {
       // Initialize database connection
       const db = new DatabaseConfig();
+      const spinner = ora('Connecting to database...').start();
       await db.connect();
+      spinner.succeed();
 
       try {
         this.log(chalk.blue('📋 Fetching cached contracts...'));
@@ -89,10 +92,13 @@ export default class List extends Command {
 
     } catch (error: any) {
       if (error.message.includes('MONGODB_URI')) {
-        this.error('MongoDB connection not configured.\nPlease set the MONGODB_URI environment variable.\nCreate a .env file with: MONGODB_URI=your_mongodb_connection_string');
+        this.log(chalk.red('Error: MongoDB connection not configured.'));
+        this.log(chalk.blue('Please set the MONGODB_URI environment variable.'));
+        this.log(chalk.blue('Create a .env file with: MONGODB_URI=your_mongodb_connection_string'));
       } else {
-        this.error(error.message);
+        this.log(chalk.red(`Error: ${error.message}`));
       }
+      this.exit(1);
     }
   }
 } 

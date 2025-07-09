@@ -1,15 +1,5 @@
 import { isAddress, ethers } from 'ethers';
 
-export function validateContractAddress(address: string): boolean {
-  if (!address) {
-    return false;
-  }
-  // Remove whitespace
-  address = address.trim();
-  // Check if it's a valid Ethereum address format
-  return isAddress(address);
-}
-
 export function normalizeAddress(address: string): string {
   if (!address) {
     throw new Error('Address cannot be empty');
@@ -17,7 +7,7 @@ export function normalizeAddress(address: string): string {
   // Remove whitespace
   address = address.trim();
   // Validate the address
-  if (!validateContractAddress(address)) {
+  if (!isAddress(address)) {
     throw new Error(`Invalid contract address: ${address}`);
   }
   // Convert to checksum address

@@ -1,12 +1,15 @@
 import { Args, Command, Flags } from '@oclif/core';
 import inquirer from 'inquirer';
+import chalk from 'chalk';
+import ora from 'ora';
 import { DatabaseConfig, ContractRecord } from '../config/database';
 import { normalizeAddress, validateNetwork, validateContractDeploymentOnNetwork } from '../utils/validation';
-import { checkStylusProgramTimeLeft } from '../utils/stylusSystemContract';
+import { checkStylusProgramTimeLeft, getContractCodeHash, checkCodehashIsCached } from '../utils/stylusSystemContract';
 import { checkDeployerWithAlchemy } from '../utils/alchemyDeployerCheck';
+import { placeBid, PlaceBidApiResponse } from '../utils/bidApiClient';
 
 export default class Add extends Command {
-  static description = 'Add a deployed Stylus contract address to the cache database';
+  static description = 'Checks deployment of a contract on arbitrum-sepolia, places a bid if none exists, caches for future bids, and monitors eviction events';
 
   static examples = [
     '$ smart-cache add 0x1234567890abcdef1234567890abcdef12345678',
@@ -62,59 +65,155 @@ export default class Add extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Add);
 
-    // Robust manual check for required deployer address
+    // Step: Validate required parameters
     if (!flags['deployed-by'] || typeof flags['deployed-by'] !== 'string' || !flags['deployed-by'].trim()) {
-      this.error(
-        'The --deployed-by flag is required and must be a valid deployer wallet address.\n' +
-        'Usage: smart-cache add <CONTRACT_ADDRESS> --deployed-by <DEPLOYER_WALLET_ADDRESS>'
-      );
-    }    
+      this.log(chalk.red('Error: The --deployed-by flag is required and must be a valid deployer wallet address.'));
+      this.log(chalk.blue('Usage: smart-cache add <CONTRACT_ADDRESS> --deployed-by <DEPLOYER_WALLET_ADDRESS>'));
+      this.exit(1);
+    }
+
+    let contractAddress: string;
+    let spinner: any;
 
     try {
-      // Validate and normalize the contract address
-      const contractAddress = normalizeAddress(args.address);
-      
-      // Validate network
-      if (!validateNetwork(flags.network)) {
-        this.error(`Error: Invalid network: ${flags.network}`);
+      // Step: Validate and normalize the contract address
+      try {
+        contractAddress = normalizeAddress(args.address);
+      } catch (err: any) {
+        this.log(chalk.red(`Error: Invalid contract address: ${args.address}`));
+        this.exit(1);
       }
-      // Validate contract deployment and deployer address on selected network
-      this.log(`Checking contract deployment on network: ${flags.network}...`);
+      
+      // Step: Validate network
+      if (!validateNetwork(flags.network)) {
+        this.log(chalk.red(`Error: Invalid network: ${flags.network}`));
+        this.exit(1);
+      }
+
+      // Step: Check contract deployment on network
+      this.log(chalk.blue(`Checking contract deployment on network: ${flags.network}...`));
+      spinner = ora('Validating contract deployment...').start();
+      
       try {
         await validateContractDeploymentOnNetwork(contractAddress, flags.network, flags['deployed-by']);
+        spinner.succeed();
+        this.log(chalk.blue(`Valid contract address: ${contractAddress}`));
       } catch (err: any) {
-        this.error(err.message);
+        spinner.fail();
+        this.log(chalk.red(`Error: ${err.message}`));
+        this.exit(1);
       }
-      this.log(`Valid contract address: ${contractAddress}`);
 
-      // Call programTimeLeft on Stylus system contract for arbitrum-sepolia
+      // Step: Check Stylus program status for arbitrum-sepolia
       if (flags.network === 'arbitrum-sepolia') {
+        spinner = ora('Checking Stylus program status...').start();
         try {
           await checkStylusProgramTimeLeft(contractAddress);
+          spinner.succeed();
         } catch (err: any) {
-          this.error(err.message);
+          spinner.fail();
+          this.log(chalk.red(`Error: ${err.message}`));
+          this.exit(1);
         }
       }
-      // Check deployer address matches actual contract deployer using Alchemy
+
+      // Step: Verify deployer address with Alchemy
       const alchemyApiKey = process.env.ALCHEMY_API_KEY || '';
       if (!alchemyApiKey) {
-        this.error('Alchemy API key is required. Please set ALCHEMY_API_KEY in your environment.');
+        this.log(chalk.red('Error: Alchemy API key is required. Please set ALCHEMY_API_KEY in your environment.'));
+        this.exit(1);
       }
+
+      spinner = ora('Verifying deployer address...').start();
       try {
         await checkDeployerWithAlchemy(contractAddress, flags['deployed-by'], flags.network, alchemyApiKey);
+        spinner.succeed();
       } catch (err: any) {
-        this.error(err.message);
+        spinner.fail();
+        this.log(chalk.red(`Error: ${err.message}`));
+        this.exit(1);
       }
 
-      // Initialize database connection
+      // Step: Get contract code hash and check if cached
+      spinner = ora('Fetching contract code hash...').start();
+      let codehash = '';
+      try {
+        codehash = await getContractCodeHash(contractAddress);
+        spinner.succeed();
+      } catch (err: any) {
+        spinner.fail();
+        this.log(chalk.red(`Error: Failed to fetch code hash: ${err.message}`));
+        this.exit(1);
+      }
+
+      // Step: Check if bid already placed and place bid if necessary
+      let bidAlreadyPlaced = false;
+      let bidApiResult: PlaceBidApiResponse | null = null;
+      
+      spinner = ora('Checking if bid already placed...').start();
+      try {
+        const isCached = await checkCodehashIsCached(codehash);
+        spinner.succeed();
+        
+        if (isCached) {
+          bidAlreadyPlaced = true;
+          this.log(chalk.yellow('Warning: You have already placed a bid.'));
+          this.log(chalk.blue('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time.'));
+        } else {
+          this.log(chalk.blue('You have not placed a bid yet. Placing bid on your behalf and adding contract to cache database. We will monitor for eviction events and place future bids, ensuring efficient gas savings and preventing contract eviction over time.'));
+          
+          // Step: Place bid with retry logic
+          let retryCount = 0;
+          const maxRetries = 2;
+          
+          while (retryCount <= maxRetries) {
+            spinner = ora(`Placing bid (attempt ${retryCount + 1}/${maxRetries + 1})...`).start();
+            try {
+              bidApiResult = await placeBid(contractAddress);
+              spinner.succeed();
+              this.log(chalk.green('✅ Bid placement successful.'));
+              break;
+            } catch (err: any) {
+              spinner.fail();
+              
+              if (retryCount < maxRetries) {
+                this.log(chalk.yellow(`Warning: Bid placement failed, retrying in 5 seconds... (${err.message})`));
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                retryCount++;
+              } else {
+                this.log(chalk.red(`Error: Failed to place bid after ${maxRetries + 1} attempts: ${err.message}`));
+                this.exit(1);
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        spinner.fail();
+        this.log(chalk.red(`Error: ${err.message}`));
+        this.exit(1);
+      }
+
+      // Step: Initialize database connection
       const db = new DatabaseConfig();
+      spinner = ora('Connecting to database...').start();
       await db.connect();
+      spinner.succeed();
 
       try {
+        // Step: Prepare contract data
+        const nowIST = new Date();
+        const evictionThresholdIST = new Date(nowIST.getTime() + (364 * 24 * 60 * 60 * 1000)); // Add 364 days
+
         let contractData: Omit<ContractRecord, '_id'> = {
           contractAddress,
+          deployedBy: flags['deployed-by'],
           network: flags.network,
+          minBidRequired: bidApiResult?.minBidRequired,
+          gasSaved: bidApiResult?.gasSaved,
+          gasUsed: bidApiResult?.gasUsed,
+          txHash: bidApiResult?.txHash,
           deployedAt: new Date(),
+          evictionThresholdDate: evictionThresholdIST,
         };
 
         // Add optional fields from flags
@@ -133,7 +232,7 @@ export default class Add extends Command {
             const additionalMetadata = JSON.parse(flags.metadata);
             metadata = { ...metadata, ...additionalMetadata };
           } catch (error) {
-            this.warn(`Warning: Invalid JSON in metadata, ignoring: ${flags.metadata}`);
+            this.log(chalk.yellow(`Warning: Invalid JSON in metadata, ignoring: ${flags.metadata}`));
           }
         }
 
@@ -191,33 +290,41 @@ export default class Add extends Command {
           if (responses.deployedBy) contractData.deployedBy = responses.deployedBy;
         }
 
-        this.log(`Saving contract to cache database...`);
+        // Step: Save to database
+        spinner = ora('Saving contract to cache database...').start();
+        let recordId: string;
+        
+        try {
+          recordId = await db.addContract(contractData);
+          spinner.succeed();
+          this.log(chalk.green('✅ Contract successfully added to cache.'));
+        } catch (err: any) {
+          spinner.fail();
+          this.log(chalk.red(`Error: Failed to save contract to database: ${err.message}`));
+          this.exit(1);
+        }
 
-        // Save to database
-        const recordId = await db.addContract(contractData);
-
-        this.log(`Contract successfully added to cache.`);
+        // Step: Display contract details summary
         this.log('');
-        this.log('Contract Details:');
-        this.log(`   Address: ${contractAddress}`);
-        this.log(`   Network: ${flags.network}`);
-        this.log(`   Deployed By: ${contractData.deployedBy}`);
-        this.log(`   Record ID: ${recordId}`);
+        this.log(chalk.blue('Contract Details:'));
+        this.log(chalk.blue(`   Address: ${contractAddress}`));
+        this.log(chalk.blue(`   Network: ${flags.network}`));
+        this.log(chalk.blue(`   Deployed By: ${contractData.deployedBy}`));
         
         if (contractData.txHash) {
-          this.log(`   Tx Hash: ${contractData.txHash}`);
+          this.log(chalk.blue(`   Tx Hash: ${contractData.txHash}`));
         }
         
         if (contractData.metadata?.name) {
-          this.log(`   Name: ${contractData.metadata.name}`);
+          this.log(chalk.blue(`   Name: ${contractData.metadata.name}`));
         }
         
         if (contractData.metadata?.version) {
-          this.log(`   Version: ${contractData.metadata.version}`);
+          this.log(chalk.blue(`   Version: ${contractData.metadata.version}`));
         }
 
         this.log('');
-        this.log('The Stylus contract is now cached and accessible globally.');
+        this.log(chalk.green('✅ The Stylus contract is now cached and accessible globally.'));
 
       } finally {
         await db.disconnect();
@@ -225,13 +332,16 @@ export default class Add extends Command {
 
     } catch (error: any) {
       if (error.message.includes('already exists')) {
-        this.log('Warning: Contract already exists in cache.');
-        this.log('Use "smart-cache list" to view cached contracts.');
+        this.log(chalk.yellow('Warning: Contract already exists in cache.'));
+        this.log(chalk.blue('Use "smart-cache list" to view cached contracts.'));
       } else if (error.message.includes('MONGODB_URI')) {
-        this.error('Error: MongoDB connection not configured.\nPlease set the MONGODB_URI environment variable.\nCreate a .env file with: MONGODB_URI=your_mongodb_connection_string');
+        this.log(chalk.red('Error: MongoDB connection not configured.'));
+        this.log(chalk.blue('Please set the MONGODB_URI environment variable.'));
+        this.log(chalk.blue('Create a .env file with: MONGODB_URI=your_mongodb_connection_string'));
       } else {
-        this.error(error.message);
+        this.log(chalk.red(`Error: ${error.message}`));
       }
+      this.exit(1);
     }
   }
 } 

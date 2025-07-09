@@ -9,8 +9,12 @@ export interface ContractRecord {
   contractAddress: string;
   network: string;
   deployedAt: Date;
+  evictionThresholdDate: Date;
   deployedBy?: string;
+  minBidRequired?: string;
+  gasSaved?: string;
   txHash?: string;
+  gasUsed?: string;
   metadata?: {
     name?: string;
     description?: string;

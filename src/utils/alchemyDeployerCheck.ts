@@ -3,7 +3,7 @@ import { Alchemy, Network } from "alchemy-sdk";
 const NETWORK_MAP: Record<string, Network> = {
   'arbitrum-sepolia': Network.ARB_SEPOLIA,
   'arbitrum-one': Network.ARB_MAINNET,
-  // Add more if needed
+  'arbitrum-nova': Network.ARBNOVA_MAINNET,
 };
 
 export async function checkDeployerWithAlchemy(contractAddress: string, deployerAddress: string, network: string, apiKey: string) {
