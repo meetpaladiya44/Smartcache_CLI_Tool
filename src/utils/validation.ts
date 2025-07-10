@@ -19,26 +19,9 @@ export function validateNetwork(network: string): boolean {
     'arbitrum-sepolia',
     'arbitrum-one', 
     'arbitrum-nova',
-    'arbitrum-goerli', // Legacy testnet
     'localhost'
   ];
   return validNetworks.includes(network.toLowerCase());
-}
-
-export function detectNetwork(endpoint?: string): string {
-  if (!endpoint) {
-    return 'arbitrum-sepolia'; // Default network
-  }
-  if (endpoint.includes('sepolia')) {
-    return 'arbitrum-sepolia';
-  } else if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1')) {
-    return 'localhost';
-  } else if (endpoint.includes('arbitrum.io')) {
-    return 'arbitrum-one';
-  } else if (endpoint.includes('nova')) {
-    return 'arbitrum-nova';
-  }
-  return 'arbitrum-sepolia';
 }
 
 // Dynamic RPC URLs for supported networks
@@ -47,7 +30,6 @@ const NETWORK_RPC: Record<string, string> = {
   'arbitrum-one': 'https://arb1.arbitrum.io/rpc',
   'arbitrum-nova': 'https://nova.arbitrum.io/rpc',
   'localhost': 'http://localhost:8545',
-  'arbitrum-goerli': 'https://goerli-rollup.arbitrum.io/rpc',
 };
 
 export async function validateContractDeploymentOnNetwork(contractAddress: string, network: string, deployerAddress?: string) {

@@ -2,11 +2,12 @@ import { Args, Command, Flags } from '@oclif/core';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
-import { DatabaseConfig, ContractRecord } from '../config/database';
+import ProgressBar from 'progress';
+import { ContractRecord } from '../config/database';
 import { normalizeAddress, validateNetwork, validateContractDeploymentOnNetwork } from '../utils/validation';
 import { checkStylusProgramTimeLeft, getContractCodeHash, checkCodehashIsCached } from '../utils/stylusSystemContract';
-import { checkDeployerWithAlchemy } from '../utils/alchemyDeployerCheck';
 import { placeBid, PlaceBidApiResponse } from '../utils/bidApiClient';
+import { apiClient } from '../utils/apiClient';
 
 export default class Add extends Command {
   static description = 'Checks deployment of a contract on arbitrum-sepolia, places a bid if none exists, caches for future bids, and monitors eviction events';
@@ -67,9 +68,9 @@ export default class Add extends Command {
 
     // Step: Validate required parameters
     if (!flags['deployed-by'] || typeof flags['deployed-by'] !== 'string' || !flags['deployed-by'].trim()) {
-      this.log(chalk.red('Error: The --deployed-by flag is required and must be a valid deployer wallet address.'));
+      this.log(chalk.red('Error: The --deployed-by flag is required and must be a valid deployer wallet address'));
       this.log(chalk.blue('Usage: smart-cache add <CONTRACT_ADDRESS> --deployed-by <DEPLOYER_WALLET_ADDRESS>'));
-      this.exit(1);
+      process.exit(1);
     }
 
     let contractAddress: string;
@@ -81,17 +82,15 @@ export default class Add extends Command {
         contractAddress = normalizeAddress(args.address);
       } catch (err: any) {
         this.log(chalk.red(`Error: Invalid contract address: ${args.address}`));
-        this.exit(1);
+        process.exit(1);
       }
       
       // Step: Validate network
       if (!validateNetwork(flags.network)) {
         this.log(chalk.red(`Error: Invalid network: ${flags.network}`));
-        this.exit(1);
+        process.exit(1);
       }
 
-      // Step: Check contract deployment on network
-      this.log(chalk.blue(`Checking contract deployment on network: ${flags.network}...`));
       spinner = ora('Validating contract deployment...').start();
       
       try {
@@ -101,7 +100,7 @@ export default class Add extends Command {
       } catch (err: any) {
         spinner.fail();
         this.log(chalk.red(`Error: ${err.message}`));
-        this.exit(1);
+        process.exit(1);
       }
 
       // Step: Check Stylus program status for arbitrum-sepolia
@@ -113,25 +112,45 @@ export default class Add extends Command {
         } catch (err: any) {
           spinner.fail();
           this.log(chalk.red(`Error: ${err.message}`));
-          this.exit(1);
+          process.exit(1);
         }
       }
 
-      // Step: Verify deployer address with Alchemy
-      const alchemyApiKey = process.env.ALCHEMY_API_KEY || '';
-      if (!alchemyApiKey) {
-        this.log(chalk.red('Error: Alchemy API key is required. Please set ALCHEMY_API_KEY in your environment.'));
-        this.exit(1);
-      }
+      // Step: Verify deployer address with backend API (Alchemy verification)
+      this.log(chalk.blue('Verifying deployer address'));
+      const deployerProgress = new ProgressBar('  Deployer verification [:bar] :percent :etas', {
+        complete: '█',
+        incomplete: '░',
+        width: 30,
+        total: 100
+      });
 
-      spinner = ora('Verifying deployer address...').start();
+      let progressInterval: NodeJS.Timeout | undefined;
       try {
-        await checkDeployerWithAlchemy(contractAddress, flags['deployed-by'], flags.network, alchemyApiKey);
-        spinner.succeed();
+        // Simulate progress for deployer check
+        let progress = 0;
+        progressInterval = setInterval(() => {
+          if (progress < 90) {
+            progress += 10;
+            deployerProgress.tick(10);
+          }
+        }, 200);
+
+        const deployerResult = await apiClient.verifyDeployer(contractAddress, flags['deployed-by'], flags.network);
+        
+        if (progressInterval) clearInterval(progressInterval);
+        deployerProgress.update(1);
+        
+        if (!deployerResult.success) {
+          this.log(chalk.red(`Error: ${deployerResult.error}`));
+          process.exit(1);
+        }
+        
+        this.log(chalk.green('✅ Deployer verification completed successfully'));
       } catch (err: any) {
-        spinner.fail();
-        this.log(chalk.red(`Error: ${err.message}`));
-        this.exit(1);
+        if (progressInterval) clearInterval(progressInterval);
+        this.log(chalk.red('Error: Could not connect to the SmartCache server'));
+        process.exit(1);
       }
 
       // Step: Get contract code hash and check if cached
@@ -143,7 +162,7 @@ export default class Add extends Command {
       } catch (err: any) {
         spinner.fail();
         this.log(chalk.red(`Error: Failed to fetch code hash: ${err.message}`));
-        this.exit(1);
+        process.exit(1);
       }
 
       // Step: Check if bid already placed and place bid if necessary
@@ -157,24 +176,44 @@ export default class Add extends Command {
         
         if (isCached) {
           bidAlreadyPlaced = true;
-          this.log(chalk.yellow('Warning: You have already placed a bid.'));
-          this.log(chalk.blue('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time.'));
+          this.log(chalk.yellow('Warning: You have already placed a bid'));
+          this.log(chalk.blue('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time'));
         } else {
-          this.log(chalk.blue('You have not placed a bid yet. Placing bid on your behalf and adding contract to cache database. We will monitor for eviction events and place future bids, ensuring efficient gas savings and preventing contract eviction over time.'));
+          this.log(chalk.blue('You have not placed a bid yet. Placing bid on your behalf and adding contract to cache database. We will monitor for eviction events and place future bids, ensuring efficient gas savings and preventing contract eviction over time'));
           
-          // Step: Place bid with retry logic
+          // Step: Place bid with retry logic and progress bar
           let retryCount = 0;
           const maxRetries = 2;
           
           while (retryCount <= maxRetries) {
-            spinner = ora(`Placing bid (attempt ${retryCount + 1}/${maxRetries + 1})...`).start();
+            this.log(chalk.blue(`🔄 Placing bid (attempt ${retryCount + 1}/${maxRetries + 1})...`));
+            
+            const bidProgress = new ProgressBar('  Bid placement [:bar] :percent :etas', {
+              complete: '█',
+              incomplete: '░',
+              width: 30,
+              total: 100
+            });
+
+            let bidProgressInterval: NodeJS.Timeout | undefined;
             try {
+              // Simulate progress for bid placement
+              let bidProgressCount = 0;
+              bidProgressInterval = setInterval(() => {
+                if (bidProgressCount < 85) {
+                  bidProgressCount += 15;
+                  bidProgress.tick(15);
+                }
+              }, 300);
+
               bidApiResult = await placeBid(contractAddress);
-              spinner.succeed();
-              this.log(chalk.green('✅ Bid placement successful.'));
+              
+              if (bidProgressInterval) clearInterval(bidProgressInterval);
+              bidProgress.update(1);
+              this.log(chalk.green('✅ Bid placement successful'));
               break;
             } catch (err: any) {
-              spinner.fail();
+              if (bidProgressInterval) clearInterval(bidProgressInterval);
               
               if (retryCount < maxRetries) {
                 this.log(chalk.yellow(`Warning: Bid placement failed, retrying in 5 seconds... (${err.message})`));
@@ -182,7 +221,7 @@ export default class Add extends Command {
                 retryCount++;
               } else {
                 this.log(chalk.red(`Error: Failed to place bid after ${maxRetries + 1} attempts: ${err.message}`));
-                this.exit(1);
+                process.exit(1);
               }
             }
           }
@@ -190,158 +229,159 @@ export default class Add extends Command {
       } catch (err: any) {
         spinner.fail();
         this.log(chalk.red(`Error: ${err.message}`));
-        this.exit(1);
+        process.exit(1);
       }
 
-      // Step: Initialize database connection
-      const db = new DatabaseConfig();
-      spinner = ora('Connecting to database...').start();
-      await db.connect();
-      spinner.succeed();
+      // Step: Prepare contract data for database storage
+      // Convert UTC to IST (UTC + 5:30 hours)
+      const nowUTC = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
+      const nowIST = new Date(nowUTC.getTime() + istOffset);
+      const evictionThresholdIST = new Date(nowIST.getTime() + (364 * 24 * 60 * 60 * 1000)); // Add 364 days
 
-      try {
-        // Step: Prepare contract data
-        const nowIST = new Date();
-        const evictionThresholdIST = new Date(nowIST.getTime() + (364 * 24 * 60 * 60 * 1000)); // Add 364 days
+      let contractData: Omit<ContractRecord, '_id'> = {
+        contractAddress,
+        deployedBy: flags['deployed-by'],
+        network: flags.network,
+        minBidRequired: bidApiResult?.minBidRequired,
+        gasSaved: bidApiResult?.gasSaved,
+        gasUsed: bidApiResult?.gasUsed,
+        txHash: bidApiResult?.txHash,
+        deployedAt: nowIST,
+        evictionThresholdDate: evictionThresholdIST,
+      };
 
-        let contractData: Omit<ContractRecord, '_id'> = {
-          contractAddress,
-          deployedBy: flags['deployed-by'],
-          network: flags.network,
-          minBidRequired: bidApiResult?.minBidRequired,
-          gasSaved: bidApiResult?.gasSaved,
-          gasUsed: bidApiResult?.gasUsed,
-          txHash: bidApiResult?.txHash,
-          deployedAt: new Date(),
-          evictionThresholdDate: evictionThresholdIST,
-        };
+      // Add optional fields from flags
+      if (flags['tx-hash']) contractData.txHash = flags['tx-hash'];
+      contractData.deployedBy = flags['deployed-by'];
 
-        // Add optional fields from flags
-        if (flags['tx-hash']) contractData.txHash = flags['tx-hash'];
-        contractData.deployedBy = flags['deployed-by'];
+      // Handle metadata
+      let metadata: any = {};
+      if (flags.name) metadata.name = flags.name;
+      if (flags.description) metadata.description = flags.description;
+      if (flags.version) metadata.version = flags.version;
 
-        // Handle metadata
-        let metadata: any = {};
-        if (flags.name) metadata.name = flags.name;
-        if (flags.description) metadata.description = flags.description;
-        if (flags.version) metadata.version = flags.version;
-
-        // Parse additional metadata from JSON if provided
-        if (flags.metadata) {
-          try {
-            const additionalMetadata = JSON.parse(flags.metadata);
-            metadata = { ...metadata, ...additionalMetadata };
-          } catch (error) {
-            this.log(chalk.yellow(`Warning: Invalid JSON in metadata, ignoring: ${flags.metadata}`));
-          }
-        }
-
-        if (Object.keys(metadata).length > 0) {
-          contractData.metadata = metadata;
-        }
-
-        // Interactive mode for additional information
-        if (flags.interactive) {
-          const responses = await inquirer.prompt([
-            {
-              type: 'input',
-              name: 'name',
-              message: 'Contract name (optional):',
-              when: !flags.name,
-            },
-            {
-              type: 'input',
-              name: 'description',
-              message: 'Contract description (optional):',
-              when: !flags.description,
-            },
-            {
-              type: 'input',
-              name: 'version',
-              message: 'Contract version (optional):',
-              when: !flags.version,
-            },
-            {
-              type: 'input',
-              name: 'txHash',
-              message: 'Deployment transaction hash (optional):',
-              when: !flags['tx-hash'],
-            },
-            {
-              type: 'input',
-              name: 'deployedBy',
-              message: 'Deployer address (required):',
-              when: !flags['deployed-by'],
-              validate: (input: string) => input ? true : 'Deployer address is required.'
-            },
-          ]);
-
-          // Update contract data with interactive responses
-          if (responses.name || responses.description || responses.version) {
-            contractData.metadata = {
-              ...contractData.metadata,
-              ...(responses.name && { name: responses.name }),
-              ...(responses.description && { description: responses.description }),
-              ...(responses.version && { version: responses.version }),
-            };
-          }
-
-          if (responses.txHash) contractData.txHash = responses.txHash;
-          if (responses.deployedBy) contractData.deployedBy = responses.deployedBy;
-        }
-
-        // Step: Save to database
-        spinner = ora('Saving contract to cache database...').start();
-        let recordId: string;
-        
+      // Parse additional metadata from JSON if provided
+      if (flags.metadata) {
         try {
-          recordId = await db.addContract(contractData);
-          spinner.succeed();
-          this.log(chalk.green('✅ Contract successfully added to cache.'));
-        } catch (err: any) {
-          spinner.fail();
-          this.log(chalk.red(`Error: Failed to save contract to database: ${err.message}`));
-          this.exit(1);
+          const additionalMetadata = JSON.parse(flags.metadata);
+          metadata = { ...metadata, ...additionalMetadata };
+        } catch (error) {
+          this.log(chalk.yellow(`Warning: Invalid JSON in metadata, ignoring: ${flags.metadata}`));
         }
-
-        // Step: Display contract details summary
-        this.log('');
-        this.log(chalk.blue('Contract Details:'));
-        this.log(chalk.blue(`   Address: ${contractAddress}`));
-        this.log(chalk.blue(`   Network: ${flags.network}`));
-        this.log(chalk.blue(`   Deployed By: ${contractData.deployedBy}`));
-        
-        if (contractData.txHash) {
-          this.log(chalk.blue(`   Tx Hash: ${contractData.txHash}`));
-        }
-        
-        if (contractData.metadata?.name) {
-          this.log(chalk.blue(`   Name: ${contractData.metadata.name}`));
-        }
-        
-        if (contractData.metadata?.version) {
-          this.log(chalk.blue(`   Version: ${contractData.metadata.version}`));
-        }
-
-        this.log('');
-        this.log(chalk.green('✅ The Stylus contract is now cached and accessible globally.'));
-
-      } finally {
-        await db.disconnect();
       }
+
+      if (Object.keys(metadata).length > 0) {
+        contractData.metadata = metadata;
+      }
+
+      // Interactive mode for additional information
+      if (flags.interactive) {
+        const responses = await inquirer.prompt([
+          {
+            type: 'input',
+            name: 'name',
+            message: 'Contract name (optional):',
+            when: !flags.name,
+          },
+          {
+            type: 'input',
+            name: 'description',
+            message: 'Contract description (optional):',
+            when: !flags.description,
+          },
+          {
+            type: 'input',
+            name: 'version',
+            message: 'Contract version (optional):',
+            when: !flags.version,
+          },
+          {
+            type: 'input',
+            name: 'txHash',
+            message: 'Deployment transaction hash (optional):',
+            when: !flags['tx-hash'],
+          },
+          {
+            type: 'input',
+            name: 'deployedBy',
+            message: 'Deployer address (required):',
+            when: !flags['deployed-by'],
+            validate: (input: string) => input ? true : 'Deployer address is required.'
+          },
+        ]);
+
+        // Update contract data with interactive responses
+        if (responses.name || responses.description || responses.version) {
+          contractData.metadata = {
+            ...contractData.metadata,
+            ...(responses.name && { name: responses.name }),
+            ...(responses.description && { description: responses.description }),
+            ...(responses.version && { version: responses.version }),
+          };
+        }
+
+        if (responses.txHash) contractData.txHash = responses.txHash;
+        if (responses.deployedBy) contractData.deployedBy = responses.deployedBy;
+      }
+
+      // Step: Save to database via backend API
+      spinner = ora('Saving contract to cache...').start();
+      try {
+        const storeResult = await apiClient.storeContract(contractData);
+        
+        if (!storeResult.success) {
+          spinner.fail();
+          // Check if it's a "contract already exists" error
+          if (storeResult.error && storeResult.error.includes('already exists')) {
+            this.log(chalk.yellow('Warning: Contract already exists in cache'));
+            this.log(chalk.blue('Use "smart-cache list" to view cached contracts'));
+            process.exit(1);
+          } else {
+            this.log(chalk.red('Error: Service is currently unavailable'));
+            process.exit(1);
+          }
+        }
+        
+        spinner.succeed();
+      } catch (err: any) {
+        spinner.fail();
+        this.log(chalk.red('Error: Service is currently unavailable'));
+        process.exit(1);
+      }
+
+      // Step: Display contract details summary
+      this.log('');
+      this.log(chalk.blue('Contract Details:'));
+      this.log(chalk.blue(`   Address: ${contractAddress}`));
+      this.log(chalk.blue(`   Network: ${flags.network}`));
+      this.log(chalk.blue(`   Deployed By: ${contractData.deployedBy}`));
+      
+      if (contractData.txHash) {
+        this.log(chalk.blue(`   Tx Hash: ${contractData.txHash}`));
+      }
+      
+      if (contractData.metadata?.name) {
+        this.log(chalk.blue(`   Name: ${contractData.metadata.name}`));
+      }
+      
+      if (contractData.metadata?.version) {
+        this.log(chalk.blue(`   Version: ${contractData.metadata.version}`));
+      }
+
+      this.log('');
+      this.log(chalk.green('✅ The Stylus contract is now cached and accessible globally'));
 
     } catch (error: any) {
       if (error.message.includes('already exists')) {
-        this.log(chalk.yellow('Warning: Contract already exists in cache.'));
-        this.log(chalk.blue('Use "smart-cache list" to view cached contracts.'));
-      } else if (error.message.includes('MONGODB_URI')) {
-        this.log(chalk.red('Error: MongoDB connection not configured.'));
-        this.log(chalk.blue('Please set the MONGODB_URI environment variable.'));
-        this.log(chalk.blue('Create a .env file with: MONGODB_URI=your_mongodb_connection_string'));
+        this.log(chalk.yellow('Warning: Contract already exists in cache'));
+        this.log(chalk.blue('Use "smart-cache list" to view cached contracts'));
+      } else if (error.message.includes('Unable to connect to SmartCache backend')) {
+        this.log(chalk.red('Error: Service is currently unavailable'));
       } else {
         this.log(chalk.red(`Error: ${error.message}`));
       }
-      this.exit(1);
+      process.exit(1);
     }
   }
 } 

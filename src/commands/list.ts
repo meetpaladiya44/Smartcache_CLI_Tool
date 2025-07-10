@@ -1,15 +1,16 @@
 import { Command, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import ora from 'ora';
-import { DatabaseConfig } from '../config/database';
+import { apiClient } from '../utils/apiClient';
 
 export default class List extends Command {
-  static description = 'List all cached Stylus contract addresses';
+  static description = 'Lists all cached contracts from the SmartCache system';
 
   static examples = [
     '$ smart-cache list',
     '$ smart-cache list --network arbitrum-sepolia',
-    '$ smart-cache list --format table',
+    '$ smart-cache list --format json',
+    '$ smart-cache list --network arbitrum-one --format json',
   ];
 
   static flags = {
@@ -22,83 +23,115 @@ export default class List extends Command {
     format: Flags.string({
       char: 'f',
       description: 'Output format',
-      options: ['table', 'json'],
       default: 'table',
+      options: ['table', 'json'],
     }),
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(List);
+    let spinner: any;
 
     try {
-      // Initialize database connection
-      const db = new DatabaseConfig();
-      const spinner = ora('Connecting to database...').start();
-      await db.connect();
+      // Check backend connectivity
+      spinner = ora('Connecting to SmartCache backend...').start();
+      // const healthCheck = await apiClient.checkBackendHealth();
+      // if (!healthCheck.connected) {
+      //   spinner.fail();
+      //   this.log(chalk.red('Error: Could not connect to the SmartCache server'));
+      //   process.exit(1);
+      // }
       spinner.succeed();
 
-      try {
-        this.log(chalk.blue('📋 Fetching cached contracts...'));
+      // Fetch contracts from backend
+      spinner = ora('Fetching cached contracts...').start();
+      const result = await apiClient.listContracts(flags.network);
+      
+      if (!result.success) {
+        spinner.fail();
+        this.log(chalk.red(`Error: ${result.error}`));
+        process.exit(1);
+      }
 
-        const contracts = await db.getAllContracts();
-        
-        // Filter by network if specified
-        const filteredContracts = flags.network 
-          ? contracts.filter(contract => contract.network === flags.network)
-          : contracts;
+      spinner.succeed();
 
-        if (filteredContracts.length === 0) {
-          this.log(chalk.yellow('⚠️  No contracts found in cache.'));
-          this.log(chalk.blue('💡 Use "smart-cache add <address>" to add contracts.'));
-          return;
-        }
+      const contracts = result.contracts || [];
 
-        this.log(chalk.green(`✅ Found ${filteredContracts.length} cached contract(s)`));
-        this.log('');
-
-        if (flags.format === 'json') {
-          this.log(JSON.stringify(filteredContracts, null, 2));
+      if (contracts.length === 0) {
+        this.log(chalk.yellow('No contracts found in cache'));
+        if (flags.network) {
+          this.log(chalk.blue(`Try without the --network filter or use a different network`));
         } else {
-          // Table format
-          this.log(chalk.bold('📋 Cached Stylus Contracts:'));
-          this.log('');
-
-          filteredContracts.forEach((contract, index) => {
-            this.log(chalk.cyan(`${index + 1}. ${contract.contractAddress}`));
-            this.log(`   Network: ${chalk.yellow(contract.network)}`);
-            this.log(`   Added: ${chalk.gray(contract.deployedAt.toLocaleDateString())}`);
-            
-            if (contract.metadata?.name) {
-              this.log(`   Name: ${chalk.magenta(contract.metadata.name)}`);
-            }
-            
-            if (contract.metadata?.version) {
-              this.log(`   Version: ${chalk.magenta(contract.metadata.version)}`);
-            }
-            
-            if (contract.txHash) {
-              this.log(`   Tx Hash: ${chalk.gray(contract.txHash.substring(0, 20) + '...')}`);
-            }
-            
-            this.log('');
-          });
-
-          this.log(chalk.blue(`Total: ${filteredContracts.length} contract(s)`));
+          this.log(chalk.blue('Add contracts using: smart-cache add <address> --deployed-by <deployer>'));
         }
-
-      } finally {
-        await db.disconnect();
+        return;
       }
 
-    } catch (error: any) {
-      if (error.message.includes('MONGODB_URI')) {
-        this.log(chalk.red('Error: MongoDB connection not configured.'));
-        this.log(chalk.blue('Please set the MONGODB_URI environment variable.'));
-        this.log(chalk.blue('Create a .env file with: MONGODB_URI=your_mongodb_connection_string'));
+      // Display results
+      if (flags.format === 'json') {
+        console.log(JSON.stringify(contracts, null, 2));
+        return;
+      }
+
+      // Table format
+      this.log('');
+      if (flags.network) {
+        this.log(chalk.blue(`Cached Contracts (${flags.network}):`));
       } else {
-        this.log(chalk.red(`Error: ${error.message}`));
+        this.log(chalk.blue('Cached Contracts (All Networks):'));
       }
-      this.exit(1);
+      this.log(chalk.blue('='.repeat(80)));
+
+      contracts.forEach((contract, index) => {
+        this.log(chalk.green(`${index + 1}. ${contract.contractAddress}`));
+        this.log(chalk.blue(`   Network: ${contract.network}`));
+        this.log(chalk.blue(`   Deployed By: ${contract.deployedBy}`));
+        this.log(chalk.blue(`   Deployed At: ${new Date(contract.deployedAt).toLocaleString()}`));
+        this.log(chalk.blue(`   Eviction Threshold: ${new Date(contract.evictionThresholdDate).toLocaleString()}`));
+        
+        if (contract.txHash) {
+          this.log(chalk.blue(`   Tx Hash: ${contract.txHash}`));
+        }
+        
+        if (contract.metadata) {
+          const metadata = contract.metadata as any;
+          if (metadata.name) {
+            this.log(chalk.blue(`   Name: ${metadata.name}`));
+          }
+          if (metadata.version) {
+            this.log(chalk.blue(`   Version: ${metadata.version}`));
+          }
+          if (metadata.description) {
+            this.log(chalk.blue(`   Description: ${metadata.description}`));
+          }
+        }
+        
+        if (contract.minBidRequired) {
+          this.log(chalk.blue(`   Min Bid Required: ${contract.minBidRequired} ETH`));
+        }
+        
+        if (contract.gasSaved) {
+          this.log(chalk.blue(`   Gas Saved: ${contract.gasSaved}`));
+        }
+        
+        if (index < contracts.length - 1) {
+          this.log('');
+        }
+      });
+
+      this.log('');
+      this.log(chalk.blue(`Total: ${contracts.length} contract${contracts.length === 1 ? '' : 's'}`));
+      
+    } catch (error: any) {
+      if (spinner) spinner.fail();
+      
+      this.log(chalk.red(`Error: ${error.message || 'An unexpected error occurred'}`));
+      
+      if (error.code === 'ECONNREFUSED') {
+        this.log(chalk.yellow('Please ensure the SmartCache backend service is running.'));
+      }
+      
+      process.exit(1);
     }
   }
 } 

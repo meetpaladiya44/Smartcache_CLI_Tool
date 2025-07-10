@@ -1,6 +1,6 @@
 # Smart Cache CLI
 
-A global CLI tool to cache deployed Arbitrum Stylus contract addresses to MongoDB Atlas, making them accessible from anywhere.
+A global CLI tool to cache deployed Arbitrum Stylus contract addresses, making them accessible from anywhere across different systems and environments.
 
 [![npm version](https://badge.fury.io/js/smart-cache-cli.svg)](https://badge.fury.io/js/smart-cache-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,7 +8,7 @@ A global CLI tool to cache deployed Arbitrum Stylus contract addresses to MongoD
 ## 🚀 Features
 
 - **Global CLI**: Access your cached contracts from any directory on any system
-- **MongoDB Atlas Integration**: Secure cloud database storage
+- **Cloud Storage Integration**: Secure cloud-based contract storage
 - **Stylus Contract Support**: Designed specifically for Arbitrum Stylus contracts
 - **Network Detection**: Automatic network detection from deployment endpoints
 - **Rich Metadata**: Store contract names, versions, descriptions, and more
@@ -31,37 +31,6 @@ cd smart-cache-cli
 npm install
 npm run build
 npm link
-```
-
-## ⚙️ Configuration
-
-### 1. Set up MongoDB Atlas
-
-1. Create a [MongoDB Atlas](https://www.mongodb.com/atlas) account
-2. Create a new cluster
-3. Create a database user
-4. Get your connection string
-
-### 2. Configure Environment Variables
-
-Create a `.env` file in your home directory or set environment variables:
-
-```bash
-# Required: MongoDB Atlas connection string
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database?retryWrites=true&w=majority
-
-# Optional: Database name (defaults to 'smartcache')
-DATABASE_NAME=smartcache
-
-# Optional: Collection name (defaults to 'contracts')
-COLLECTION_NAME=contracts
-```
-
-### Example .env file:
-```env
-MONGODB_URI=mongodb+srv://myuser:mypassword@cluster0.example.mongodb.net/smartcache?retryWrites=true&w=majority
-DATABASE_NAME=smartcache
-COLLECTION_NAME=contracts
 ```
 
 ## 🔧 Usage
@@ -240,10 +209,9 @@ smart-cache-cli/
 
 ## 🔐 Security
 
-- Never commit your `.env` file or MongoDB credentials
-- Use environment variables for sensitive configuration
-- Ensure your MongoDB Atlas cluster has proper network access controls
-- Consider using MongoDB Atlas IP whitelisting for additional security
+- Never commit your private keys or sensitive information
+- Use strong passwords for your accounts
+- Keep your CLI and dependencies up to date
 
 ## 🤝 Contributing
 
@@ -261,18 +229,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### Common Issues
 
-#### "MONGODB_URI environment variable is required"
-Make sure you have set the `MONGODB_URI` environment variable in your `.env` file or system environment.
-
 #### "Invalid contract address"
 Ensure the contract address is a valid Ethereum address format (42 characters starting with 0x).
-
-#### "Failed to connect to MongoDB"
-Check your MongoDB Atlas connection string and ensure:
-- The cluster is running
-- Your IP is whitelisted
-- Credentials are correct
-- Network access is configured properly
 
 #### "Command not found: smart-cache"
 Make sure you installed the package globally:
@@ -299,4 +257,4 @@ npm install -g smart-cache-cli
 
 **Happy caching! 🎉**
 
-Built with ❤️ for the Arbitrum Stylus community. 
+Built with ❤️ for the Arbitrum Stylus community.
