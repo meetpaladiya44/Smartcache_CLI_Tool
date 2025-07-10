@@ -231,6 +231,7 @@ export default class Add extends Command {
         this.log(chalk.red(`Error: ${err.message}`));
         process.exit(1);
       }
+      
 
       // Step: Prepare contract data for database storage
       // Convert UTC to IST (UTC + 5:30 hours)
