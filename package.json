@@ -1,6 +1,6 @@
 {
   "name": "smart-cache-cli",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A global CLI tool to cache deployed Arbitrum Stylus contract addresses for efficient access and management",
   "author": "SmartCache Team",
   "bin": {
