@@ -60,9 +60,9 @@ export default class List extends Command {
       if (contracts.length === 0) {
         this.log(chalk.yellow('No contracts found in cache'));
         if (flags.network) {
-          this.log(chalk.blue(`Try without the --network filter or use a different network`));
+          this.log(chalk.hex('#87CEEB')(`Try without the --network filter or use a different network`));
         } else {
-          this.log(chalk.blue('Add contracts using: smart-cache add <address> --deployed-by <deployer>'));
+          this.log(chalk.hex('#87CEEB')('Add contracts using: smart-cache add <address> --deployed-by <deployer>'));
         }
         return;
       }
@@ -76,42 +76,42 @@ export default class List extends Command {
       // Table format
       this.log('');
       if (flags.network) {
-        this.log(chalk.blue(`Cached Contracts (${flags.network}):`));
+        this.log(chalk.hex('#87CEEB')(`Cached Contracts (${flags.network}):`));
       } else {
-        this.log(chalk.blue('Cached Contracts (All Networks):'));
+        this.log(chalk.hex('#87CEEB')('Cached Contracts (All Networks):'));
       }
-      this.log(chalk.blue('='.repeat(80)));
+      this.log(chalk.hex('#87CEEB')('='.repeat(80)));
 
       contracts.forEach((contract, index) => {
         this.log(chalk.green(`${index + 1}. ${contract.contractAddress}`));
-        this.log(chalk.blue(`   Network: ${contract.network}`));
-        this.log(chalk.blue(`   Deployed By: ${contract.deployedBy}`));
-        this.log(chalk.blue(`   Deployed At: ${new Date(contract.deployedAt).toLocaleString()}`));
-        this.log(chalk.blue(`   Eviction Threshold: ${new Date(contract.evictionThresholdDate).toLocaleString()}`));
+        this.log(chalk.hex('#87CEEB')(`   Network: ${contract.network}`));
+        this.log(chalk.hex('#87CEEB')(`   Deployed By: ${contract.deployedBy}`));
+        this.log(chalk.hex('#87CEEB')(`   Deployed At: ${new Date(contract.deployedAt).toLocaleString()}`));
+        this.log(chalk.hex('#87CEEB')(`   Eviction Threshold: ${new Date(contract.evictionThresholdDate).toLocaleString()}`));
         
         if (contract.txHash) {
-          this.log(chalk.blue(`   Tx Hash: ${contract.txHash}`));
+          this.log(chalk.hex('#87CEEB')(`   Tx Hash: ${contract.txHash}`));
         }
         
         if (contract.metadata) {
           const metadata = contract.metadata as any;
           if (metadata.name) {
-            this.log(chalk.blue(`   Name: ${metadata.name}`));
+            this.log(chalk.hex('#87CEEB')(`   Name: ${metadata.name}`));
           }
           if (metadata.version) {
-            this.log(chalk.blue(`   Version: ${metadata.version}`));
+            this.log(chalk.hex('#87CEEB')(`   Version: ${metadata.version}`));
           }
           if (metadata.description) {
-            this.log(chalk.blue(`   Description: ${metadata.description}`));
+            this.log(chalk.hex('#87CEEB')(`   Description: ${metadata.description}`));
           }
         }
         
         if (contract.minBidRequired) {
-          this.log(chalk.blue(`   Min Bid Required: ${contract.minBidRequired} ETH`));
+          this.log(chalk.hex('#87CEEB')(`   Min Bid Required: ${contract.minBidRequired} ETH`));
         }
         
         if (contract.gasSaved) {
-          this.log(chalk.blue(`   Gas Saved: ${contract.gasSaved}`));
+          this.log(chalk.hex('#87CEEB')(`   Gas Saved: ${contract.gasSaved}`));
         }
         
         if (index < contracts.length - 1) {
@@ -120,7 +120,7 @@ export default class List extends Command {
       });
 
       this.log('');
-      this.log(chalk.blue(`Total: ${contracts.length} contract${contracts.length === 1 ? '' : 's'}`));
+      this.log(chalk.hex('#87CEEB')(`Total: ${contracts.length} contract${contracts.length === 1 ? '' : 's'}`));
       
     } catch (error: any) {
       if (spinner) spinner.fail();

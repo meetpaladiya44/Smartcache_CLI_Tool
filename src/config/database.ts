@@ -10,6 +10,7 @@ export interface ContractRecord {
   deployedBy?: string;
   minBidRequired?: string;
   gasSaved?: string;
+  byCLI?: boolean;
   txHash?: string;
   gasUsed?: string;
   metadata?: {

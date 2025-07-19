@@ -69,7 +69,7 @@ export default class Add extends Command {
     // Step: Validate required parameters
     if (!flags['deployed-by'] || typeof flags['deployed-by'] !== 'string' || !flags['deployed-by'].trim()) {
       this.log(chalk.red('Error: The --deployed-by flag is required and must be a valid deployer wallet address'));
-      this.log(chalk.blue('Usage: smart-cache add <CONTRACT_ADDRESS> --deployed-by <DEPLOYER_WALLET_ADDRESS>'));
+      this.log(chalk.hex('#87CEEB')('Usage: smart-cache add <CONTRACT_ADDRESS> --deployed-by <DEPLOYER_WALLET_ADDRESS>'));
       process.exit(1);
     }
 
@@ -96,7 +96,7 @@ export default class Add extends Command {
       try {
         await validateContractDeploymentOnNetwork(contractAddress, flags.network, flags['deployed-by']);
         spinner.succeed();
-        this.log(chalk.blue(`Valid contract address: ${contractAddress}`));
+        this.log(chalk.hex('#87CEEB')(`Valid contract address: ${contractAddress}`));
       } catch (err: any) {
         spinner.fail();
         this.log(chalk.red(`Error: ${err.message}`));
@@ -117,7 +117,7 @@ export default class Add extends Command {
       }
 
       // Step: Verify deployer address with backend API (Alchemy verification)
-      this.log(chalk.blue('Verifying deployer address'));
+      this.log(chalk.hex('#87CEEB')('Verifying deployer address'));
       const deployerProgress = new ProgressBar('  Deployer verification [:bar] :percent :etas', {
         complete: '█',
         incomplete: '░',
@@ -177,16 +177,16 @@ export default class Add extends Command {
         if (isCached) {
           bidAlreadyPlaced = true;
           this.log(chalk.yellow('Warning: You have already placed a bid'));
-          this.log(chalk.blue('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time'));
+          this.log(chalk.hex('#87CEEB')('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time'));
         } else {
-          this.log(chalk.blue('You have not placed a bid yet. Placing bid on your behalf and adding contract to cache database. We will monitor for eviction events and place future bids, ensuring efficient gas savings and preventing contract eviction over time'));
+          this.log(chalk.hex('#87CEEB')('You have not placed a bid yet. Placing bid on your behalf and adding contract to cache database. We will monitor for eviction events and place future bids, ensuring efficient gas savings and preventing contract eviction over time'));
           
           // Step: Place bid with retry logic and progress bar
           let retryCount = 0;
           const maxRetries = 2;
           
           while (retryCount <= maxRetries) {
-            this.log(chalk.blue(`🔄 Placing bid (attempt ${retryCount + 1}/${maxRetries + 1})...`));
+            this.log(chalk.hex('#87CEEB')(`🔄 Placing bid (attempt ${retryCount + 1}/${maxRetries + 1})...`));
             
             const bidProgress = new ProgressBar('  Bid placement [:bar] :percent :etas', {
               complete: '█',
@@ -250,6 +250,7 @@ export default class Add extends Command {
         txHash: bidApiResult?.txHash,
         deployedAt: nowIST,
         evictionThresholdDate: evictionThresholdIST,
+        byCLI: true,
       };
 
       // Add optional fields from flags
@@ -336,7 +337,7 @@ export default class Add extends Command {
           // Check if it's a "contract already exists" error
           if (storeResult.error && storeResult.error.includes('already exists')) {
             this.log(chalk.yellow('Warning: Contract already exists in cache'));
-            this.log(chalk.blue('Use "smart-cache list" to view cached contracts'));
+            this.log(chalk.hex('#87CEEB')('Use "smart-cache list" to view cached contracts'));
             process.exit(1);
           } else {
             this.log(chalk.red('Error: Service is currently unavailable'));
@@ -353,21 +354,21 @@ export default class Add extends Command {
 
       // Step: Display contract details summary
       this.log('');
-      this.log(chalk.blue('Contract Details:'));
-      this.log(chalk.blue(`   Address: ${contractAddress}`));
-      this.log(chalk.blue(`   Network: ${flags.network}`));
-      this.log(chalk.blue(`   Deployed By: ${contractData.deployedBy}`));
+      this.log(chalk.hex('#87CEEB')('Contract Details:'));
+      this.log(chalk.hex('#87CEEB')(`   Address: ${contractAddress}`));
+      this.log(chalk.hex('#87CEEB')(`   Network: ${flags.network}`));
+      this.log(chalk.hex('#87CEEB')(`   Deployed By: ${contractData.deployedBy}`));
       
       if (contractData.txHash) {
-        this.log(chalk.blue(`   Tx Hash: ${contractData.txHash}`));
+        this.log(chalk.hex('#87CEEB')(`   Tx Hash: ${contractData.txHash}`));
       }
       
       if (contractData.metadata?.name) {
-        this.log(chalk.blue(`   Name: ${contractData.metadata.name}`));
+        this.log(chalk.hex('#87CEEB')(`   Name: ${contractData.metadata.name}`));
       }
       
       if (contractData.metadata?.version) {
-        this.log(chalk.blue(`   Version: ${contractData.metadata.version}`));
+        this.log(chalk.hex('#87CEEB')(`   Version: ${contractData.metadata.version}`));
       }
 
       this.log('');
@@ -376,7 +377,7 @@ export default class Add extends Command {
     } catch (error: any) {
       if (error.message.includes('already exists')) {
         this.log(chalk.yellow('Warning: Contract already exists in cache'));
-        this.log(chalk.blue('Use "smart-cache list" to view cached contracts'));
+        this.log(chalk.hex('#87CEEB')('Use "smart-cache list" to view cached contracts'));
       } else if (error.message.includes('Unable to connect to SmartCache backend')) {
         this.log(chalk.red('Error: Service is currently unavailable'));
       } else {
