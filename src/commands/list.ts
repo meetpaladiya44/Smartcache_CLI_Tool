@@ -47,9 +47,15 @@ export default class List extends Command {
       spinner = ora('Fetching cached contracts...').start();
       const result = await apiClient.listContracts(flags.network);
       
+      // Debug: Log the result to see what we're getting
+      if (process.env.DEBUG) {
+        console.log('API Response:', JSON.stringify(result, null, 2));
+      }
+      
       if (!result.success) {
         spinner.fail();
-        this.log(chalk.red(`Error: ${result.error}`));
+        const errorMessage = typeof result.error === 'object' ? JSON.stringify(result.error) : result.error || 'Unknown error';
+        this.log(chalk.red(`Error: ${errorMessage}`));
         process.exit(1);
       }
 
@@ -125,7 +131,16 @@ export default class List extends Command {
     } catch (error: any) {
       if (spinner) spinner.fail();
       
-      this.log(chalk.red(`Error: ${error.message || 'An unexpected error occurred'}`));
+      let errorMessage = 'An unexpected error occurred';
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object') {
+        errorMessage = JSON.stringify(error);
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      this.log(chalk.red(`Error: ${errorMessage}`));
       
       if (error.code === 'ECONNREFUSED') {
         this.log(chalk.yellow('Please ensure the SmartCache backend service is running.'));

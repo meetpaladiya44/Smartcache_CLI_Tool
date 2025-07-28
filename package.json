@@ -31,6 +31,7 @@
     "inquirer": "^8.2.6",
     "ora": "^5.4.1",
     "progress": "^2.0.3",
+    "toml": "^3.0.0",
     "validator": "^13.11.0"
   },
   "devDependencies": {

@@ -3,11 +3,26 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
 import ProgressBar from 'progress';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as toml from 'toml';
 import { ContractRecord } from '../config/database';
 import { normalizeAddress, validateNetwork, validateContractDeploymentOnNetwork } from '../utils/validation';
 import { checkStylusProgramTimeLeft, getContractCodeHash, checkCodehashIsCached } from '../utils/stylusSystemContract';
 import { placeBid, PlaceBidApiResponse } from '../utils/bidApiClient';
 import { apiClient } from '../utils/apiClient';
+
+// Define the structure of your TOML configuration
+interface SmartCacheConfig {
+  network?: string;
+  deployed_by?: string;
+  interactive?: boolean;
+  name?: string;
+  description?: string;
+  version?: string;
+  metadata?: any;
+  contract_address?: string; // NEW: Allow contract address in TOML
+}
 
 export default class Add extends Command {
   static description = 'Checks deployment of a contract on arbitrum-sepolia, places a bid if none exists, caches for future bids, and monitors eviction events';
@@ -58,43 +73,190 @@ export default class Add extends Command {
 
   static args = {
     address: Args.string({
-      description: 'Contract address to cache',
-      required: true,
+      description: 'Contract address to cache (optional if specified in smartcache.toml)',
+      required: false,
     }),
   };
+
+  private validateTomlConfig(config: SmartCacheConfig): void {
+    const validNetworks = ['arbitrum-sepolia', 'arbitrum-one', 'arbitrum-nova', 'localhost'];
+    
+    if (config.network && !validNetworks.includes(config.network)) {
+      throw new Error(`validation: Invalid network "${config.network}". Valid options: ${validNetworks.join(', ')}`);
+    }
+    
+    if (config.deployed_by && !/^0x[a-fA-F0-9]{40}$/.test(config.deployed_by)) {
+      throw new Error(`validation: Invalid deployed_by address format "${config.deployed_by}"`);
+    }
+    
+    if (config.contract_address && !/^0x[a-fA-F0-9]{40}$/.test(config.contract_address)) {
+      throw new Error(`validation: Invalid contract_address format "${config.contract_address}"`);
+    }
+  }
+
+  // private logConfigValues(config: SmartCacheConfig): void {
+  //   const configItems: string[] = [];
+    
+  //   if (config.network) configItems.push(`network: ${config.network}`);
+  //   if (config.deployed_by) configItems.push(`deployed_by: ${config.deployed_by.substring(0, 10)}...`);
+  //   if (config.contract_address) configItems.push(`contract_address: ${config.contract_address.substring(0, 10)}...`);
+    
+  //   if (configItems.length > 0) { 
+  //     this.log(chalk.hex('#87CEEB')(`   Loading: ${configItems.join(', ')}`));
+  //   }
+  // }
+  
+  // Method to load and parse TOML configuration
+  private loadConfig(): SmartCacheConfig | null {
+    const configPath = path.join(process.cwd(), 'smartcache.toml');
+    
+    try {
+      if (!fs.existsSync(configPath)) {
+        return null;
+      }
+  
+      this.log(chalk.hex('#87CEEB')('📄 Found smartcache.toml configuration file'));
+      
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      const config = toml.parse(configContent) as SmartCacheConfig;
+      
+      // Log what we're reading from config (without validation yet)
+      // this.logConfigValues(config);
+      
+      return config;
+    } catch (error: any) {
+      this.log(chalk.yellow('Warning: Could not parse smartcache.toml, using command line options'));
+      return null;
+    }
+  }
+
+  // Method to merge config file values with command line flags
+  private mergeConfigWithFlags(config: SmartCacheConfig | null, flags: any): any {
+    if (!config) return flags;
+  
+    const mergedFlags = { ...flags };
+  
+    // Only use config values if the corresponding flag is not provided
+    if (!flags.network && config.network) {
+      mergedFlags.network = config.network;
+    }
+  
+    if (!flags['deployed-by'] && config.deployed_by) {
+      mergedFlags['deployed-by'] = config.deployed_by;
+    }
+  
+    if (flags.interactive === false && config.interactive !== undefined) {
+      mergedFlags.interactive = config.interactive;
+    }
+  
+    if (!flags.name && config.name) {
+      mergedFlags.name = config.name;
+    }
+  
+    if (!flags.description && config.description) {
+      mergedFlags.description = config.description;
+    }
+  
+    if (!flags.version && config.version) {
+      mergedFlags.version = config.version;
+    }
+  
+    if (!flags.metadata && config.metadata) {
+      mergedFlags.metadata = JSON.stringify(config.metadata);
+    }
+  
+    return mergedFlags;
+  }
+
+  private validateRequiredInputs(args: any, mergedFlags: any, config: SmartCacheConfig | null): string {
+    // Contract address validation - CLI argument has highest priority
+    let contractAddress = args.address;
+    
+    if (!contractAddress && config?.contract_address) {
+      // Only validate TOML config when we actually need to use it
+      try {
+        this.validateTomlConfig(config);
+        contractAddress = config.contract_address;
+        this.log(chalk.hex('#87CEEB')(`Using contract address from config: ${contractAddress.substring(0, 10)}...`));
+      } catch (error: any) {
+        this.log(chalk.red(`Error in smartcache.toml: ${error.message}`));
+        this.log(chalk.hex('#87CEEB')('Solutions:'));
+        this.log(chalk.hex('#87CEEB')('  1. Provide as argument: smart-cache add <CONTRACT_ADDRESS>'));
+        this.log(chalk.hex('#87CEEB')('  2. Fix the contract_address in smartcache.toml'));
+        this.showConfigTip();
+        process.exit(1);
+      }
+    }
+    
+    if (!contractAddress) {
+      this.log(chalk.red('Error: Contract address is required'));
+      this.log(chalk.hex('#87CEEB')('Solutions:'));
+      this.log(chalk.hex('#87CEEB')('  1. Provide as argument: smart-cache add <CONTRACT_ADDRESS>'));
+      this.log(chalk.hex('#87CEEB')('  2. Add to smartcache.toml: contract_address = "0x..."'));
+      
+      // Show helpful tip after the error
+      this.showConfigTip();
+      process.exit(1);
+    }
+  
+    // Deployer address validation
+    if (!mergedFlags['deployed-by']) {
+      this.log(chalk.red('Error: Deployer address is required'));
+      this.log(chalk.hex('#87CEEB')('Solutions:'));
+      this.log(chalk.hex('#87CEEB')('  1. Use flag: --deployed-by <DEPLOYER_ADDRESS>'));
+      this.log(chalk.hex('#87CEEB')('  2. Add to smartcache.toml: deployed_by = "0x..."'));
+      
+      // Show helpful tip after the error
+      this.showConfigTip();
+      process.exit(1);
+    }
+  
+    return contractAddress;
+  }
+
+  private showConfigTip(): void {
+    const configPath = path.join(process.cwd(), 'smartcache.toml');
+    
+    if (!fs.existsSync(configPath)) {
+      this.log(''); // Empty line for better readability
+      this.log(chalk.yellow('💡 Tip: No smartcache.toml found in current directory'));
+      this.log(chalk.hex('#87CEEB')('   Run "smart-cache init" to create a configuration file'));
+      this.log(chalk.hex('#87CEEB')('   This will make future commands easier to use'));
+    }
+  }
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Add);
 
-    // Step: Validate required parameters
-    if (!flags['deployed-by'] || typeof flags['deployed-by'] !== 'string' || !flags['deployed-by'].trim()) {
-      this.log(chalk.red('Error: The --deployed-by flag is required and must be a valid deployer wallet address'));
-      this.log(chalk.hex('#87CEEB')('Usage: smart-cache add <CONTRACT_ADDRESS> --deployed-by <DEPLOYER_WALLET_ADDRESS>'));
-      process.exit(1);
-    }
+    // Load TOML configuration and merge with flags
+    const config = this.loadConfig();
+    const mergedFlags = this.mergeConfigWithFlags(config, flags);
 
-    let contractAddress: string;
-    let spinner: any;
+    // Validate required inputs and get final contract address
+    const finalContractAddress = this.validateRequiredInputs(args, mergedFlags, config);
+
+  let contractAddress: string;
+  let spinner: any;
 
     try {
       // Step: Validate and normalize the contract address
       try {
-        contractAddress = normalizeAddress(args.address);
+        contractAddress = normalizeAddress(finalContractAddress);
       } catch (err: any) {
-        this.log(chalk.red(`Error: Invalid contract address: ${args.address}`));
+        this.log(chalk.red(`Error: Invalid contract address: ${finalContractAddress}`));
         process.exit(1);
       }
       
       // Step: Validate network
-      if (!validateNetwork(flags.network)) {
-        this.log(chalk.red(`Error: Invalid network: ${flags.network}`));
+      if (!validateNetwork(mergedFlags.network)) {
+        this.log(chalk.red(`Error: Invalid network: ${mergedFlags.network}`));
         process.exit(1);
       }
 
       spinner = ora('Validating contract deployment...').start();
       
       try {
-        await validateContractDeploymentOnNetwork(contractAddress, flags.network, flags['deployed-by']);
+        await validateContractDeploymentOnNetwork(contractAddress, mergedFlags.network, mergedFlags['deployed-by']);
         spinner.succeed();
         this.log(chalk.hex('#87CEEB')(`Valid contract address: ${contractAddress}`));
       } catch (err: any) {
@@ -104,7 +266,7 @@ export default class Add extends Command {
       }
 
       // Step: Check Stylus program status for arbitrum-sepolia
-      if (flags.network === 'arbitrum-sepolia') {
+      if (mergedFlags.network === 'arbitrum-sepolia') {
         spinner = ora('Checking Stylus program status...').start();
         try {
           await checkStylusProgramTimeLeft(contractAddress);
@@ -136,7 +298,7 @@ export default class Add extends Command {
           }
         }, 200);
 
-        const deployerResult = await apiClient.verifyDeployer(contractAddress, flags['deployed-by'], flags.network);
+        const deployerResult = await apiClient.verifyDeployer(contractAddress, mergedFlags['deployed-by'], mergedFlags.network);
         
         if (progressInterval) clearInterval(progressInterval);
         deployerProgress.update(1);
@@ -242,8 +404,8 @@ export default class Add extends Command {
 
       let contractData: Omit<ContractRecord, '_id'> = {
         contractAddress,
-        deployedBy: flags['deployed-by'],
-        network: flags.network,
+        deployedBy: mergedFlags['deployed-by'],
+        network: mergedFlags.network,
         minBidRequired: bidApiResult?.minBidRequired,
         gasSaved: bidApiResult?.gasSaved,
         gasUsed: bidApiResult?.gasUsed,
@@ -254,22 +416,22 @@ export default class Add extends Command {
       };
 
       // Add optional fields from flags
-      if (flags['tx-hash']) contractData.txHash = flags['tx-hash'];
-      contractData.deployedBy = flags['deployed-by'];
+      if (mergedFlags['tx-hash']) contractData.txHash = mergedFlags['tx-hash'];
+      contractData.deployedBy = mergedFlags['deployed-by'];
 
       // Handle metadata
       let metadata: any = {};
-      if (flags.name) metadata.name = flags.name;
-      if (flags.description) metadata.description = flags.description;
-      if (flags.version) metadata.version = flags.version;
+      if (mergedFlags.name) metadata.name = mergedFlags.name;
+      if (mergedFlags.description) metadata.description = mergedFlags.description;
+      if (mergedFlags.version) metadata.version = mergedFlags.version;
 
       // Parse additional metadata from JSON if provided
-      if (flags.metadata) {
+      if (mergedFlags.metadata) {
         try {
-          const additionalMetadata = JSON.parse(flags.metadata);
+          const additionalMetadata = JSON.parse(mergedFlags.metadata);
           metadata = { ...metadata, ...additionalMetadata };
         } catch (error) {
-          this.log(chalk.yellow(`Warning: Invalid JSON in metadata, ignoring: ${flags.metadata}`));
+          this.log(chalk.yellow(`Warning: Invalid JSON in metadata, ignoring: ${mergedFlags.metadata}`));
         }
       }
 
@@ -278,37 +440,37 @@ export default class Add extends Command {
       }
 
       // Interactive mode for additional information
-      if (flags.interactive) {
+      if (mergedFlags.interactive) {
         const responses = await inquirer.prompt([
           {
             type: 'input',
             name: 'name',
             message: 'Contract name (optional):',
-            when: !flags.name,
+            when: !mergedFlags.name,
           },
           {
             type: 'input',
             name: 'description',
             message: 'Contract description (optional):',
-            when: !flags.description,
+            when: !mergedFlags.description,
           },
           {
             type: 'input',
             name: 'version',
             message: 'Contract version (optional):',
-            when: !flags.version,
+            when: !mergedFlags.version,
           },
           {
             type: 'input',
             name: 'txHash',
             message: 'Deployment transaction hash (optional):',
-            when: !flags['tx-hash'],
+            when: !mergedFlags['tx-hash'],
           },
           {
             type: 'input',
             name: 'deployedBy',
             message: 'Deployer address (required):',
-            when: !flags['deployed-by'],
+            when: !mergedFlags['deployed-by'],
             validate: (input: string) => input ? true : 'Deployer address is required.'
           },
         ]);
@@ -337,7 +499,6 @@ export default class Add extends Command {
           // Check if it's a "contract already exists" error
           if (storeResult.error && storeResult.error.includes('already exists')) {
             this.log(chalk.yellow('Warning: Contract already exists in cache'));
-            this.log(chalk.hex('#87CEEB')('Use "smart-cache list" to view cached contracts'));
             process.exit(1);
           } else {
             this.log(chalk.red('Error: Service is currently unavailable'));
@@ -356,7 +517,7 @@ export default class Add extends Command {
       this.log('');
       this.log(chalk.hex('#87CEEB')('Contract Details:'));
       this.log(chalk.hex('#87CEEB')(`   Address: ${contractAddress}`));
-      this.log(chalk.hex('#87CEEB')(`   Network: ${flags.network}`));
+      this.log(chalk.hex('#87CEEB')(`   Network: ${mergedFlags.network}`));
       this.log(chalk.hex('#87CEEB')(`   Deployed By: ${contractData.deployedBy}`));
       
       if (contractData.txHash) {
@@ -377,7 +538,6 @@ export default class Add extends Command {
     } catch (error: any) {
       if (error.message.includes('already exists')) {
         this.log(chalk.yellow('Warning: Contract already exists in cache'));
-        this.log(chalk.hex('#87CEEB')('Use "smart-cache list" to view cached contracts'));
       } else if (error.message.includes('Unable to connect to SmartCache backend')) {
         this.log(chalk.red('Error: Service is currently unavailable'));
       } else {
@@ -386,4 +546,4 @@ export default class Add extends Command {
       process.exit(1);
     }
   }
-} 
+}

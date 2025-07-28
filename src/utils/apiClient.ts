@@ -2,6 +2,7 @@ import axios from 'axios';
 
 // Default backend URL - can be overridden with environment variable
 const BACKEND_URL = 'https://smartcli.udonswap.org';
+// const BACKEND_URL = 'http://localhost:4000';
 
 export interface ListContractsResponse {
   success: boolean;

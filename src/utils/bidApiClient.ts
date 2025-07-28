@@ -8,6 +8,7 @@ export interface PlaceBidApiResponse {
 
 export async function placeBid(contractAddress: string): Promise<PlaceBidApiResponse> {
   const apiUrl = 'https://smartcli.udonswap.org/place-bid';
+  // const apiUrl = 'http://localhost:4000/place-bid';
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {

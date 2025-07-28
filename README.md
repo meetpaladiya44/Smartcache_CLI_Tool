@@ -8,6 +8,7 @@ A global CLI tool to cache deployed Arbitrum Stylus contract addresses, making t
 ## 🚀 Features
 
 - **Global CLI**: Access your cached contracts from any directory on any system
+- **Configuration Management**: Use `smartcache.toml` files for persistent settings
 - **Cloud Storage Integration**: Secure cloud-based contract storage
 - **Stylus Contract Support**: Designed specifically for Arbitrum Stylus contracts
 - **Network Detection**: Automatic network detection from deployment endpoints
@@ -35,13 +36,33 @@ npm link
 
 ## 🔧 Usage
 
+### Initial Setup
+
+#### Create Configuration File
+
+```bash
+# Create a basic configuration file
+smart-cache init
+
+# Create with interactive setup
+smart-cache init --interactive
+
+# Overwrite existing configuration
+smart-cache init --force
+```
+
+The `init` command creates a `smartcache.toml` file in your current directory with default settings.
+
 ### Basic Commands
 
 #### Add a Contract
 
 ```bash
-# Basic usage
+# Basic usage with CLI arguments
 smart-cache add 0x1234567890abcdef1234567890abcdef12345678
+
+# Using configuration file (no arguments needed if configured)
+smart-cache add
 
 # With network specification
 smart-cache add 0x1234567890abcdef1234567890abcdef12345678 --network arbitrum-sepolia
@@ -57,19 +78,6 @@ smart-cache add 0x1234567890abcdef1234567890abcdef12345678 \
 smart-cache add 0x1234567890abcdef1234567890abcdef12345678 --interactive
 ```
 
-#### List Cached Contracts
-
-```bash
-# List all contracts
-smart-cache list
-
-# Filter by network
-smart-cache list --network arbitrum-sepolia
-
-# JSON output
-smart-cache list --format json
-```
-
 #### Get Help
 
 ```bash
@@ -78,17 +86,33 @@ smart-cache --help
 
 # Command-specific help
 smart-cache add --help
-smart-cache list --help
+smart-cache init --help
 ```
 
 ## 📋 Command Reference
+
+### `smart-cache init`
+
+Create a `smartcache.toml` configuration file with default settings.
+
+**Flags:**
+- `-f, --force` - Overwrite existing smartcache.toml file
+- `-i, --interactive` - Interactive mode to configure values
+- `-h, --help` - Show help
+
+**Examples:**
+```bash
+smart-cache init
+smart-cache init --interactive
+smart-cache init --force
+```
 
 ### `smart-cache add <address>`
 
 Add a deployed Stylus contract address to the cache.
 
 **Arguments:**
-- `address` - The contract address to cache (required)
+- `address` - The contract address to cache (optional if specified in smartcache.toml)
 
 **Flags:**
 - `-n, --network` - Network where contract is deployed (default: arbitrum-sepolia)
@@ -106,22 +130,70 @@ Add a deployed Stylus contract address to the cache.
 smart-cache add 0x1234567890abcdef1234567890abcdef12345678
 smart-cache add 0x1234... --network arbitrum-sepolia --name "Counter"
 smart-cache add 0x1234... --metadata '{"type":"ERC20","symbol":"TOK"}'
+smart-cache add  # Uses configuration from smartcache.toml
 ```
 
-### `smart-cache list`
+## ⚙️ Configuration
 
-List all cached contract addresses.
+### smartcache.toml
 
-**Flags:**
-- `-n, --network` - Filter by network
-- `-f, --format` - Output format (table/json, default: table)
-- `-h, --help` - Show help
+The CLI supports a configuration file that allows you to set default values and avoid repeating common parameters.
 
-**Examples:**
+#### Basic Configuration
+
+```toml
+# SmartCache Configuration File
+# Generated on 2025-07-28
+
+# Default network for contract operations
+# Options: arbitrum-sepolia, arbitrum-one, arbitrum-nova, localhost
+network = "arbitrum-sepolia"
+
+# Your wallet address that deployed the contracts, this is required for all operations
+deployed_by = "0xd649CB59755EbC44610a8e5F15D3C93C3aEb08F1"
+
+# Optional: Default contract address
+# If specified, you can run 'smart-cache add' without providing an address
+contract_address = "0xd32d28f326955b1b2fa9d01bea0dce77b1219a57"
+
+# Optional: Default contract metadata
+name = "MyContract"
+description = "Contract description"
+version = "1.0.0"
+
+# CLI behavior settings
+interactive = false
+
+# Optional: Custom metadata (add any additional fields you need)
+# [metadata]
+# author = "Your Name"
+# license = "MIT"
+# tags = ["defi", "nft"]
+```
+
+#### Configuration Priority
+
+The CLI follows this priority order for configuration values:
+
+1. **Command line arguments** (highest priority)
+2. **Command line flags**
+3. **TOML configuration file** (lowest priority)
+
+This means command line options will always override values from the configuration file.
+
+#### Creating Configuration Files
+
+Use the `init` command to create configuration files:
+
 ```bash
-smart-cache list
-smart-cache list --network arbitrum-sepolia
-smart-cache list --format json
+# Basic setup
+smart-cache init
+
+# Interactive setup with prompts
+smart-cache init --interactive
+
+# Overwrite existing file
+smart-cache init --force
 ```
 
 ## 🌐 Supported Networks
@@ -135,7 +207,16 @@ smart-cache list --format json
 
 This tool is designed to work seamlessly with the Arbitrum Stylus development workflow:
 
-### 1. Deploy your Stylus contract
+### 1. Initialize Configuration
+
+```bash
+# Create configuration file
+smart-cache init --interactive
+
+# Edit the generated smartcache.toml with your settings
+```
+
+### 2. Deploy your Stylus contract
 
 ```bash
 cargo stylus deploy \
@@ -143,20 +224,18 @@ cargo stylus deploy \
   --private-key="0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659"
 ```
 
-### 2. Cache the deployed contract
+### 3. Cache the deployed contract
 
 ```bash
+# Using configuration file
+smart-cache add
+
+# Or with explicit parameters
 smart-cache add 0x33f54de59419570a9442e788f5dd5cf635b3c7ac \
   --network arbitrum-sepolia \
   --tx-hash 0xa55efc05c45efc63647dff5cc37ad328a47ba5555009d92ad4e297bf4864de36 \
   --name "Counter" \
   --version "1.0.0"
-```
-
-### 3. Access from anywhere
-
-```bash
-smart-cache list --network arbitrum-sepolia
 ```
 
 ## 🛠️ Development
@@ -183,7 +262,7 @@ npm run prepack        # Prepare for publishing
 
 ```bash
 ./bin/dev add --help
-./bin/dev list
+./bin/dev init --interactive
 ```
 
 ## 📁 Project Structure
@@ -196,7 +275,7 @@ smart-cache-cli/
 ├── src/
 │   ├── commands/
 │   │   ├── add.ts       # Add command implementation
-│   │   └── list.ts      # List command implementation
+│   │   └── init.ts      # Init command implementation
 │   ├── config/
 │   │   └── database.ts  # MongoDB configuration
 │   ├── utils/
@@ -212,6 +291,7 @@ smart-cache-cli/
 - Never commit your private keys or sensitive information
 - Use strong passwords for your accounts
 - Keep your CLI and dependencies up to date
+- The `smartcache.toml` file may contain sensitive addresses - keep it secure
 
 ## 🤝 Contributing
 
@@ -238,6 +318,15 @@ Make sure you installed the package globally:
 npm install -g smart-cache-cli
 ```
 
+#### "Error in smartcache.toml"
+Check your configuration file for syntax errors. Use `smart-cache init` to create a new one.
+
+#### "Contract address is required"
+Either provide the address as a command line argument or add it to your `smartcache.toml` file:
+```toml
+contract_address = "0x1234567890abcdef1234567890abcdef12345678"
+```
+
 ### Getting Help
 
 - Create an issue on GitHub
@@ -252,6 +341,8 @@ npm install -g smart-cache-cli
 - [ ] Contract grouping and tagging
 - [ ] Integration with popular development tools
 - [ ] Web interface for contract management
+- [ ] Configuration file validation
+- [ ] Environment-specific configurations
 
 ---
 
