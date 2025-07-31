@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as toml from 'toml';
 import { ContractRecord } from '../config/database';
 import { normalizeAddress, validateNetwork, validateContractDeploymentOnNetwork } from '../utils/validation';
-import { checkStylusProgramTimeLeft, getContractCodeHash, checkCodehashIsCached } from '../utils/stylusSystemContract';
+import { checkStylusProgramTimeLeft, getContractCodeHash } from '../utils/stylusSystemContract';
 import { placeBid, PlaceBidApiResponse } from '../utils/bidApiClient';
 import { apiClient } from '../utils/apiClient';
 
@@ -315,110 +315,91 @@ export default class Add extends Command {
         process.exit(1);
       }
 
-      // Step: Get contract code hash and check if cached
-      spinner = ora('Fetching contract code hash...').start();
-      let codehash = '';
-      try {
-        codehash = await getContractCodeHash(contractAddress);
-        spinner.succeed();
-      } catch (err: any) {
-        spinner.fail();
-        this.log(chalk.red(`Error: Failed to fetch code hash: ${err.message}`));
-        process.exit(1);
-      }
-
-      // Step: Check if bid already placed and place bid if necessary
+      // Step: Place bid with retry logic and progress bar
       let bidAlreadyPlaced = false;
       let bidApiResult: PlaceBidApiResponse | null = null;
       
-      spinner = ora('Checking if bid already placed...').start();
-      try {
-        const isCached = await checkCodehashIsCached(codehash);
-        spinner.succeed();
+      this.log('');
+      this.log(chalk.hex('#87CEEB')('Placing bid on your behalf and adding contract to cache database. We will monitor for eviction events and place future bids, ensuring efficient gas savings and preventing contract eviction over time'));
+      
+      let retryCount = 0;
+      const maxRetries = 2;
+      
+      while (retryCount <= maxRetries) {
+        this.log(chalk.hex('#87CEEB')(`🔄 Placing bid (attempt ${retryCount + 1}/${maxRetries + 1})...`));
         
-        if (isCached) {
-          bidAlreadyPlaced = true;
-          this.log(chalk.yellow('Warning: You have already placed a bid'));
-          this.log(chalk.hex('#87CEEB')('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time'));
-        } else {
-          this.log(chalk.hex('#87CEEB')('You have not placed a bid yet. Placing bid on your behalf and adding contract to cache database. We will monitor for eviction events and place future bids, ensuring efficient gas savings and preventing contract eviction over time'));
+        const bidProgress = new ProgressBar('  Bid placement [:bar] :percent :etas', {
+          complete: '█',
+          incomplete: '░',
+          width: 30,
+          total: 100
+        });
+
+        let bidProgressInterval: NodeJS.Timeout | undefined;
+        try {
+          // Simulate progress for bid placement
+          let bidProgressCount = 0;
+          bidProgressInterval = setInterval(() => {
+            if (bidProgressCount < 85) {
+              bidProgressCount += 15;
+              bidProgress.tick(15);
+            }
+          }, 300);
+
+          bidApiResult = await placeBid(contractAddress);
           
-          // Step: Place bid with retry logic and progress bar
-          let retryCount = 0;
-          const maxRetries = 2;
+          if (bidProgressInterval) clearInterval(bidProgressInterval);
+          bidProgress.update(1);
+          this.log(chalk.green('✅ Bid placement successful'));
           
-          while (retryCount <= maxRetries) {
-            this.log(chalk.hex('#87CEEB')(`🔄 Placing bid (attempt ${retryCount + 1}/${maxRetries + 1})...`));
+          // Display ROI Analysis and Gas Savings data
+          if (bidApiResult.roiAnalysis || bidApiResult.gasSaved || bidApiResult.gasSavingsPercentage) {
+            this.log('');
+            this.log(chalk.hex('#87CEEB')('Bid Analysis:'));
             
-            const bidProgress = new ProgressBar('  Bid placement [:bar] :percent :etas', {
-              complete: '█',
-              incomplete: '░',
-              width: 30,
-              total: 100
-            });
-
-            let bidProgressInterval: NodeJS.Timeout | undefined;
-            try {
-              // Simulate progress for bid placement
-              let bidProgressCount = 0;
-              bidProgressInterval = setInterval(() => {
-                if (bidProgressCount < 85) {
-                  bidProgressCount += 15;
-                  bidProgress.tick(15);
-                }
-              }, 300);
-
-              bidApiResult = await placeBid(contractAddress);
-              
-              if (bidProgressInterval) clearInterval(bidProgressInterval);
-              bidProgress.update(1);
-              this.log(chalk.green('✅ Bid placement successful'));
-              
-              // Display ROI Analysis and Gas Savings data
-              if (bidApiResult.roiAnalysis || bidApiResult.gasSaved || bidApiResult.gasSavingsPercentage) {
-                this.log('');
-                this.log(chalk.hex('#87CEEB')('Bid Analysis:'));
-                
-                if (bidApiResult.roiAnalysis) {
-                  this.log(chalk.hex('#87CEEB')(`   Bid Placement Reason: ${bidApiResult.roiAnalysis.reason}`));
-                  const roiValue = parseFloat(bidApiResult.roiAnalysis.marketBidEth) - parseFloat(bidApiResult.roiAnalysis.minBidEth);
-                  this.log(chalk.hex('#87CEEB')(`   ROI: ${roiValue.toFixed(4)} ETH/contract call`));
-                  this.log(chalk.hex('#87CEEB')(`   Minimum Bid: ${bidApiResult.roiAnalysis.minBidEth} ETH`));
-                  this.log(chalk.hex('#87CEEB')(`   Market Bid: ${bidApiResult.roiAnalysis.marketBidEth} ETH`));
-                }
-                
-                if (bidApiResult.gasSaved || bidApiResult.gasSavingsPercentage) {
-                  if (bidApiResult.gasSaved) {
-                    this.log(chalk.hex('#87CEEB')(`   Gas Saved: ${bidApiResult.gasSaved} units`));
-                  }
-                  if (bidApiResult.gasSavingsPercentage) {
-                    this.log(chalk.hex('#87CEEB')(`   Savings Percentage: ${bidApiResult.gasSavingsPercentage}%`));
-                  }
-                  if (bidApiResult.gasUsed) {
-                    this.log(chalk.hex('#87CEEB')(`   Gas Used: ${bidApiResult.gasUsed} units`));
-                  }
-                }
+            if (bidApiResult.roiAnalysis) {
+              this.log(chalk.hex('#87CEEB')(`   Bid Placement Reason: ${bidApiResult.roiAnalysis.reason}`));
+              const roiValue = parseFloat(bidApiResult.roiAnalysis.marketBidEth) - parseFloat(bidApiResult.roiAnalysis.minBidEth);
+              this.log(chalk.hex('#87CEEB')(`   ROI: ${roiValue} ETH/contract call`));
+              this.log(chalk.hex('#87CEEB')(`   Minimum Bid: ${bidApiResult.roiAnalysis.minBidEth} ETH`));
+              this.log(chalk.hex('#87CEEB')(`   Market Bid: ${bidApiResult.roiAnalysis.marketBidEth} ETH`));
+            }
+            
+            if (bidApiResult.gasSaved || bidApiResult.gasSavingsPercentage) {
+              if (bidApiResult.gasSaved) {
+                this.log(chalk.hex('#87CEEB')(`   Gas Saved: ${bidApiResult.gasSaved} units`));
               }
-              
-              break;
-            } catch (err: any) {
-              if (bidProgressInterval) clearInterval(bidProgressInterval);
-              
-              if (retryCount < maxRetries) {
-                this.log(chalk.yellow(`Warning: Bid placement failed, retrying in 5 seconds... (${err.message})`));
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                retryCount++;
-              } else {
-                this.log(chalk.red(`Error: Failed to place bid after ${maxRetries + 1} attempts: ${err.message}`));
-                process.exit(1);
+              if (bidApiResult.gasSavingsPercentage) {
+                this.log(chalk.hex('#87CEEB')(`   Savings Percentage: ${bidApiResult.gasSavingsPercentage}%`));
+              }
+              if (bidApiResult.gasUsed) {
+                this.log(chalk.hex('#87CEEB')(`   Gas Used: ${bidApiResult.gasUsed} units`));
               }
             }
           }
+          
+          break;
+        } catch (err: any) {
+          if (bidProgressInterval) clearInterval(bidProgressInterval);
+          
+          // Check if it's the "execution reverted" error (bid already placed)
+          if (err.message.includes('execution reverted')) {
+            bidAlreadyPlaced = true;
+            this.log('');
+            this.log(chalk.yellow('Warning: You have already placed a bid'));
+            this.log(chalk.hex('#87CEEB')('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time'));
+            break;
+          }
+          
+          if (retryCount < maxRetries) {
+            this.log(chalk.yellow(`Warning: Bid placement failed, retrying in 5 seconds... (${err.message})`));
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            retryCount++;
+          } else {
+            this.log(chalk.red(`Error: Failed to place bid after ${maxRetries + 1} attempts: ${err.message}`));
+            process.exit(1);
+          }
         }
-      } catch (err: any) {
-        spinner.fail();
-        this.log(chalk.red(`Error: ${err.message}`));
-        process.exit(1);
       }
       
 
