@@ -373,6 +373,33 @@ export default class Add extends Command {
               if (bidProgressInterval) clearInterval(bidProgressInterval);
               bidProgress.update(1);
               this.log(chalk.green('✅ Bid placement successful'));
+              
+              // Display ROI Analysis and Gas Savings data
+              if (bidApiResult.roiAnalysis || bidApiResult.gasSaved || bidApiResult.gasSavingsPercentage) {
+                this.log('');
+                this.log(chalk.hex('#87CEEB')('Bid Analysis:'));
+                
+                if (bidApiResult.roiAnalysis) {
+                  this.log(chalk.hex('#87CEEB')(`   Bid Placement Reason: ${bidApiResult.roiAnalysis.reason}`));
+                  const roiValue = parseFloat(bidApiResult.roiAnalysis.marketBidEth) - parseFloat(bidApiResult.roiAnalysis.minBidEth);
+                  this.log(chalk.hex('#87CEEB')(`   ROI: ${roiValue.toFixed(4)} ETH/contract call`));
+                  this.log(chalk.hex('#87CEEB')(`   Minimum Bid: ${bidApiResult.roiAnalysis.minBidEth} ETH`));
+                  this.log(chalk.hex('#87CEEB')(`   Market Bid: ${bidApiResult.roiAnalysis.marketBidEth} ETH`));
+                }
+                
+                if (bidApiResult.gasSaved || bidApiResult.gasSavingsPercentage) {
+                  if (bidApiResult.gasSaved) {
+                    this.log(chalk.hex('#87CEEB')(`   Gas Saved: ${bidApiResult.gasSaved} units`));
+                  }
+                  if (bidApiResult.gasSavingsPercentage) {
+                    this.log(chalk.hex('#87CEEB')(`   Savings Percentage: ${bidApiResult.gasSavingsPercentage}%`));
+                  }
+                  if (bidApiResult.gasUsed) {
+                    this.log(chalk.hex('#87CEEB')(`   Gas Used: ${bidApiResult.gasUsed} units`));
+                  }
+                }
+              }
+              
               break;
             } catch (err: any) {
               if (bidProgressInterval) clearInterval(bidProgressInterval);
@@ -396,10 +423,8 @@ export default class Add extends Command {
       
 
       // Step: Prepare contract data for database storage
-      // Convert UTC to IST (UTC + 5:30 hours)
       const nowUTC = new Date();
-      const istOffset = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
-      const nowIST = new Date(nowUTC.getTime() + istOffset);
+      const nowIST = new Date(nowUTC.getTime());
       const evictionThresholdIST = new Date(nowIST.getTime() + (364 * 24 * 60 * 60 * 1000)); // Add 364 days
 
       let contractData: Omit<ContractRecord, '_id'> = {
@@ -437,6 +462,14 @@ export default class Add extends Command {
 
       if (Object.keys(metadata).length > 0) {
         contractData.metadata = metadata;
+      }
+
+      // Add ROI analysis data to metadata if available
+      if (bidApiResult?.roiAnalysis) {
+        if (!contractData.metadata) {
+          contractData.metadata = {};
+        }
+        contractData.metadata.roiAnalysis = bidApiResult.roiAnalysis;
       }
 
       // Interactive mode for additional information
@@ -490,6 +523,7 @@ export default class Add extends Command {
       }
 
       // Step: Save to database via backend API
+      this.log('');
       spinner = ora('Saving contract to cache...').start();
       try {
         const storeResult = await apiClient.storeContract(contractData);
@@ -514,7 +548,6 @@ export default class Add extends Command {
       }
 
       // Step: Display contract details summary
-      this.log('');
       this.log(chalk.hex('#87CEEB')('Contract Details:'));
       this.log(chalk.hex('#87CEEB')(`   Address: ${contractAddress}`));
       this.log(chalk.hex('#87CEEB')(`   Network: ${mergedFlags.network}`));

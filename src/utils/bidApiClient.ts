@@ -4,6 +4,16 @@ export interface PlaceBidApiResponse {
   gasSaved?: string;
   txHash?: string;
   gasUsed?: string;
+  blockNumber?: string;
+  gasSavingsPercentage?: string;
+  roiAnalysis?: {
+    shouldBid: boolean;
+    reason: string;
+    roi: number;
+    profit: string;
+    minBidEth: string;
+    marketBidEth: string;
+  };
 }
 
 export async function placeBid(contractAddress: string): Promise<PlaceBidApiResponse> {
