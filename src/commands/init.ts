@@ -174,7 +174,7 @@ deployed_by = "${data.deployed_by || 'YOUR_WALLET_ADDRESS_HERE'}"
 
 # Optional: Default contract address
 # If specified, you can run 'smart-cache add' without providing an address
-${data.contract_address ? `contract_address = "${data.contract_address}"` : 'contract_address = "0x..."'}
+${data.contract_address ? `contract_address = "${data.contract_address}"` : 'contract_address = "YOUR_CONTRACT_ADDRESS_HERE"'}
 
 # Optional: Default contract metadata
 ${data.name ? `name = "${data.name}"` : '# name = "MyContract"'}

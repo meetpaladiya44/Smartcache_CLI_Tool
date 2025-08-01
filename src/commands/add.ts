@@ -346,10 +346,20 @@ export default class Add extends Command {
             }
           }, 300);
 
+          // Make the API call
           bidApiResult = await placeBid(contractAddress);
           
+          // Ensure progress bar shows meaningful progress before completing
+          // Wait for at least 60% progress or 600ms, whichever comes first
+          const startTime = Date.now();
+          while (bidProgressCount < 60 && (Date.now() - startTime) < 600) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          // Complete the progress bar to 100%
           if (bidProgressInterval) clearInterval(bidProgressInterval);
           bidProgress.update(1);
+          
           this.log(chalk.green('✅ Bid placement successful'));
           
           // Display ROI Analysis and Gas Savings data
@@ -380,7 +390,9 @@ export default class Add extends Command {
           
           break;
         } catch (err: any) {
+          // Complete the progress bar to 100% before showing any error messages
           if (bidProgressInterval) clearInterval(bidProgressInterval);
+          bidProgress.update(1);
           
           // Check if it's the "execution reverted" error (bid already placed)
           if (err.message.includes('execution reverted')) {
