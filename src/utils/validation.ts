@@ -46,11 +46,5 @@ export async function validateContractDeploymentOnNetwork(contractAddress: strin
   if (!rpcUrl) {
     throw new Error(`Unsupported network: ${network}`);
   }
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  // Check that code exists at the address
-  const code = await provider.getCode(contractAddress);
-  if (!code || code === '0x') {
-    throw new Error('No contract code found at this address. It may not be deployed yet.');
-  }
   return true;
 } 

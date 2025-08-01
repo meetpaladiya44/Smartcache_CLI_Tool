@@ -16,7 +16,7 @@ export interface PlaceBidApiResponse {
   };
 }
 
-export async function placeBid(contractAddress: string): Promise<PlaceBidApiResponse> {
+export async function placeBid(contractAddress: string, network: string = 'arbitrum-sepolia'): Promise<PlaceBidApiResponse> {
   const apiUrl = 'https://smartcli.udonswap.org/place-bid';
   // const apiUrl = 'http://localhost:4000/place-bid';
   const response = await fetch(apiUrl, {
@@ -24,7 +24,7 @@ export async function placeBid(contractAddress: string): Promise<PlaceBidApiResp
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ contractAddress }),
+    body: JSON.stringify({ contractAddress, network }),
   });
 
   const data = await response.json();

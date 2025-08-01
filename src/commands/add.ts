@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as toml from 'toml';
 import { ContractRecord } from '../config/database';
 import { normalizeAddress, validateNetwork, validateContractDeploymentOnNetwork } from '../utils/validation';
-import { checkStylusProgramTimeLeft, getContractCodeHash } from '../utils/stylusSystemContract';
+import { checkStylusProgramTimeLeft } from '../utils/stylusSystemContract';
 import { placeBid, PlaceBidApiResponse } from '../utils/bidApiClient';
 import { apiClient } from '../utils/apiClient';
 
@@ -347,7 +347,7 @@ export default class Add extends Command {
           }, 300);
 
           // Make the API call
-          bidApiResult = await placeBid(contractAddress);
+          bidApiResult = await placeBid(contractAddress, mergedFlags.network);
           
           // Ensure progress bar shows meaningful progress before completing
           // Wait for at least 60% progress or 600ms, whichever comes first
