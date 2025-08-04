@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as toml from 'toml';
 import { ContractRecord } from '../config/database';
 import { normalizeAddress, validateNetwork, validateContractDeploymentOnNetwork } from '../utils/validation';
-import { checkStylusProgramTimeLeft } from '../utils/stylusSystemContract';
+import { checkStylusProgramTimeLeft, getProgramGasInit, getMinBid } from '../utils/stylusSystemContract';
 import { placeBid, PlaceBidApiResponse } from '../utils/bidApiClient';
 import { apiClient } from '../utils/apiClient';
 
@@ -269,7 +269,7 @@ export default class Add extends Command {
       if (mergedFlags.network === 'arbitrum-sepolia') {
         spinner = ora('Checking Stylus program status...').start();
         try {
-          await checkStylusProgramTimeLeft(contractAddress);
+          await checkStylusProgramTimeLeft(contractAddress, mergedFlags.network);
           spinner.succeed();
         } catch (err: any) {
           spinner.fail();
@@ -400,6 +400,29 @@ export default class Add extends Command {
             this.log('');
             this.log(chalk.yellow('Warning: You have already placed a bid'));
             this.log(chalk.hex('#87CEEB')('We\'re adding this contract to our monitoring list for eviction events and future bids, ensuring efficient gas savings and preventing contract eviction over time'));
+            
+            // Get gas analysis and minimum bid data
+            try {
+              const gasData = await getProgramGasInit(contractAddress, mergedFlags.network);
+              const minBid = await getMinBid(contractAddress, mergedFlags.network);
+              
+              // Display Bid Analysis for warning case
+              this.log('');
+              this.log(chalk.hex('#87CEEB')('Bid Analysis:'));
+              this.log(chalk.hex('#87CEEB')(`   Gas When Cached: ${gasData.gasWhenCached} units`));
+              this.log(chalk.hex('#87CEEB')(`   Gas When Not Cached: ${gasData.gas} units`));
+              this.log(chalk.hex('#87CEEB')(`   Gas Savings: ${gasData.gasSaved} units`));
+              
+              // Store the data for MongoDB
+              bidApiResult = {
+                success: false,
+                minBidRequired: minBid,
+                gasSaved: gasData.gasSaved
+              };
+            } catch (gasErr: any) {
+              this.log(chalk.yellow(`Warning: Could not fetch gas analysis: ${gasErr.message}`));
+            }
+            
             break;
           }
           
