@@ -26,6 +26,13 @@ export interface ApiResponse {
   error?: string;
 }
 
+export interface UserCheckResponse {
+  success: boolean;
+  user?: boolean;
+  balance?: boolean;
+  error?: string;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -59,6 +66,36 @@ class ApiClient {
         return {
           success: false,
           error: `Deployer verification failed: ${error.message}`
+        };
+      }
+    }
+  }
+
+  // Check user registration and balance status
+  async checkUser(deployerAddress: string, network: string): Promise<UserCheckResponse> {
+    try {
+      const response = await axios.post(`${this.baseUrl}/users/check`, {
+        deployerAddress: deployerAddress.toLowerCase(),
+        network
+      }, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        return error.response.data;
+      } else if (error.request) {
+        return {
+          success: false,
+          error: 'Unable to connect to SmartCache backend for user verification.'
+        };
+      } else {
+        return {
+          success: false,
+          error: `User verification failed: ${error.message}`
         };
       }
     }
