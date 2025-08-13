@@ -264,48 +264,48 @@ export default class Add extends Command {
         process.exit(1);
       }
 
-      // Step: Check user registration and balance status
-      spinner = ora('Checking user registration and balance...').start();
-      try {
-        const userCheckResult = await apiClient.checkUser(mergedFlags['deployed-by'], mergedFlags.network);
+      // // Step: Check user registration and balance status
+      // spinner = ora('Checking user registration and balance...').start();
+      // try {
+      //   const userCheckResult = await apiClient.checkUser(mergedFlags['deployed-by'], mergedFlags.network);
         
-        if (!userCheckResult.success) {
-          spinner.fail();
-          this.log(chalk.red(`Error: ${userCheckResult.error}`));
-          this.log(chalk.hex('#87CEEB')('Solutions:'));
-          this.log(chalk.hex('#87CEEB')('  1. Check your internet connection or try again in a few moments'));
-          process.exit(1);
-        }
+      //   if (!userCheckResult.success) {
+      //     spinner.fail();
+      //     this.log(chalk.red(`Error: ${userCheckResult.error}`));
+      //     this.log(chalk.hex('#87CEEB')('Solutions:'));
+      //     this.log(chalk.hex('#87CEEB')('  1. Check your internet connection or try again in a few moments'));
+      //     process.exit(1);
+      //   }
 
-        if (!userCheckResult.user) {
-          spinner.fail();
-          this.log(chalk.red('Error: You are not registered with SmartCache'));
-          this.log(chalk.hex('#87CEEB')('Solutions:'));
-          this.log(chalk.hex('#87CEEB')('  1. Visit SmartCache (https://stylus-cache-manager.vercel.app/) to register'));
-          this.log(chalk.hex('#87CEEB')('  2. Connect with MetaMask using the same deployer address to register yourself on SmartCache platform'));
-          this.log(chalk.hex('#87CEEB')('  3. Run this command again after successful registration and balance addition'));
-          process.exit(1);
-        }
+      //   if (!userCheckResult.user) {
+      //     spinner.fail();
+      //     this.log(chalk.red('Error: You are not registered with SmartCache'));
+      //     this.log(chalk.hex('#87CEEB')('Solutions:'));
+      //     this.log(chalk.hex('#87CEEB')('  1. Visit SmartCache (https://stylus-cache-manager.vercel.app/) to register'));
+      //     this.log(chalk.hex('#87CEEB')('  2. Connect with MetaMask using the same deployer address to register yourself on SmartCache platform'));
+      //     this.log(chalk.hex('#87CEEB')('  3. Run this command again after successful registration and balance addition'));
+      //     process.exit(1);
+      //   }
 
-        if (!userCheckResult.balance) {
-          spinner.fail();
-          this.log(chalk.red(`Error: Insufficient balance in SmartCache for ${mergedFlags.network} network`));
-          this.log(chalk.hex('#87CEEB')('Solutions:'));
-          this.log(chalk.hex('#87CEEB')('  1. Add required balance to your SmartCache (https://stylus-cache-manager.vercel.app/) account'));
-          this.log(chalk.hex('#87CEEB')('  2. Run this command again after adding balance'));
-          process.exit(1);
-        }
+      //   if (!userCheckResult.balance) {
+      //     spinner.fail();
+      //     this.log(chalk.red(`Error: Insufficient balance in SmartCache for ${mergedFlags.network} network`));
+      //     this.log(chalk.hex('#87CEEB')('Solutions:'));
+      //     this.log(chalk.hex('#87CEEB')('  1. Add required balance to your SmartCache (https://stylus-cache-manager.vercel.app/) account'));
+      //     this.log(chalk.hex('#87CEEB')('  2. Run this command again after adding balance'));
+      //     process.exit(1);
+      //   }
 
-        spinner.succeed();
-        this.log(chalk.hex('#87CEEB')('✅ User registered and balance verified'));
-      } catch (err: any) {
-        spinner.fail();
-        this.log(chalk.red('Error: Could not connect to the SmartCache server for user verification'));
-        this.log(chalk.hex('#87CEEB')('Solutions:'));
-        this.log(chalk.hex('#87CEEB')('  1. Check your internet connection or try again in a few moments'));
-        this.log(chalk.hex('#87CEEB')('  2. Contact support if the issue persists'));
-        process.exit(1);
-      }
+      //   spinner.succeed();
+      //   this.log(chalk.hex('#87CEEB')('✅ User registered and balance verified'));
+      // } catch (err: any) {
+      //   spinner.fail();
+      //   this.log(chalk.red('Error: Could not connect to the SmartCache server for user verification'));
+      //   this.log(chalk.hex('#87CEEB')('Solutions:'));
+      //   this.log(chalk.hex('#87CEEB')('  1. Check your internet connection or try again in a few moments'));
+      //   this.log(chalk.hex('#87CEEB')('  2. Contact support if the issue persists'));
+      //   process.exit(1);
+      // }
 
       // Step: Check Stylus program status for arbitrum-sepolia
       if (mergedFlags.network === 'arbitrum-sepolia') {
