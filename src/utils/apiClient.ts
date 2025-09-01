@@ -48,7 +48,7 @@ class ApiClient {
         deployerAddress,
         network
       }, {
-        timeout: 30000,
+        timeout: 120000, // Increased timeout to 2 minutes to handle slow API responses
         headers: {
           'Content-Type': 'application/json'
         }
@@ -78,7 +78,7 @@ class ApiClient {
         deployerAddress: deployerAddress.toLowerCase(),
         network
       }, {
-        timeout: 15000,
+        timeout: 60000,
         headers: {
           'Content-Type': 'application/json'
         }
@@ -105,7 +105,7 @@ class ApiClient {
   async storeContract(contractData: any): Promise<ApiResponse & { contractId?: string }> {
     try {
       const response = await axios.post(`${this.baseUrl}/contracts/store`, contractData, {
-        timeout: 15000,
+        timeout: 60000,
         headers: {
           'Content-Type': 'application/json'
         }
@@ -133,7 +133,7 @@ class ApiClient {
       const params = network ? { network } : {};
       const response = await axios.get(`${this.baseUrl}/contracts/list`, {
         params,
-        timeout: 30000,
+        timeout: 60000,
         headers: {
           'Accept': 'application/json'
         }
@@ -159,7 +159,7 @@ class ApiClient {
   async checkBackendHealth(): Promise<{ connected: boolean; error?: string }> {
     try {
       const response = await axios.get(`${this.baseUrl}/status`, {
-        timeout: 5000
+        timeout: 60000
       });
       return { connected: response.status === 200 };
     } catch (error: any) {
